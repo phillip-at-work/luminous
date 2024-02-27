@@ -1,0 +1,26 @@
+[project]
+name = "luminous"
+version = "0.0.1"
+description = "Compute irradiance, spectral/absolute power, energy, illuminance, luminous intensity/flux, photon flux, as well as algorithms for splicing, cropping, peak-finding, FWHM, and box-car smoothing spectral objects."
+readme = "README.md"
+authors = [{ name = "Phillip Curtsmith", email = "phillip.curtsmith@gmail.com" }]
+dependencies = []
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Operating System :: OS Independent",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: Science/Research",
+    "Natural Language :: English",
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project.urls]
+"Homepage" = "https://pypi.org/project/luminous/"
+"Bug Tracker" = "https://github.com/indigo-pc/luminous/issues"

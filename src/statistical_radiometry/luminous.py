@@ -1,9 +1,7 @@
 from __future__ import annotations
 import numpy as np
 from typing import List, Union, Optional
-
-
-ELECTRON_CHARGE = 1.602e-19
+import spectral_constants
 
 
 class Spectrum:
@@ -82,8 +80,11 @@ class Spectrum:
         Returns indice(s) associated with wavelength pair.
 
         Parameters:
-        lower_wavelength: the starting point of the wavelength interval
-        upper_wavelength: the ending point of the wavelength interval
+            lower_wavelength: the starting point of the wavelength interval
+            upper_wavelength: the ending point of the wavelength interval
+
+        Returns:
+            tuple: index pair associated with lower_wavelength and upper_wavelength
         """
         if lower_wavelength >= upper_wavelength:
             raise IndexError(
@@ -101,7 +102,7 @@ class Spectrum:
         Find peak amplitudes in spectral data.
 
         Parameters:
-        interval (sequence, optional): A two-element sequence specifying the minimum value and maximum value for returned peak(s).
+            interval (sequence, optional): A two-element sequence specifying the minimum value and maximum value for returned peak(s).
             Default is [0,np.Inf]
 
         Returns:
@@ -137,9 +138,12 @@ class Spectrum:
         """
         return self.peak_amplitudes(interval, return_as_list, indices=True)
 
-    def full_width_half_max(self, v: int) -> float:
+    def full_width_half_max(self, i: int) -> float:
         """
         Find full width half max (FWHM) in abscissa units for a given amplitude index.
+
+        Parameters:
+            i (int): index where peak exists
 
         Returns:
             float: FWHM for a given amplitude peak index.
@@ -149,18 +153,18 @@ class Spectrum:
         PeakPropertyWarning
             If `v` is not actually a peak index. To guard against this, pass index values returned from #peak_indices.
         """
-        if not 0 <= v <= len(self.amplitudes) - 1:
+        if not 0 <= i <= len(self.amplitudes) - 1:
             raise IndexError(
-                f"Index {v} does not exist! Param v must be an index between [0, {len(self.wavelengths)-1}]."
+                f"Index {i} does not exist! Param v must be an index between [0, {len(self.wavelengths)-1}]."
             )
-        if not isinstance(v, (int, np.integer)):
+        if not isinstance(i, (int, np.integer)):
             raise TypeError(
                 "Param v must be an integer index associated with a peak in amplitudes data."
             )
 
         from scipy.signal import peak_widths
 
-        p = peak_widths(self.amplitudes, peaks=[v], rel_height=0.5)
+        p = peak_widths(self.amplitudes, peaks=[i], rel_height=0.5)
         left = round(p[2][0])
         right = round(p[3][0])
         return self.wavelengths[right] - self.wavelengths[left]
@@ -204,6 +208,16 @@ class Spectrum:
 
         Returns:
             float: irradiance
+        """
+        return self._trapezoidal_integration(
+            lower_bound=lower_bound, upper_bound=upper_bound
+        )
+
+    def _trapezoidal_integration(
+        self, lower_bound: Optional[float] = None, upper_bound: Optional[float] = None
+    ) -> float:
+        """
+        Numpy trapezoidal integration wrapper for Spectrum objects.
         """
         lower_bound = self.wavelengths[0] if lower_bound is None else lower_bound
         upper_bound = self.wavelengths[-1] if upper_bound is None else upper_bound
@@ -304,7 +318,7 @@ class Spectrum:
         Compute energy in electron volts.
 
         Parameters:
-        See #compute_joules.
+            See #compute_joules.
 
         Returns:
             float: total energy in electron volts.
@@ -314,28 +328,42 @@ class Spectrum:
             upper_bound=upper_bound,
             collection_area=collection_area,
             integration_time=integration_time,
-        ) * (1 / ELECTRON_CHARGE)
+        ) * (1 / spectral_constants.ELECTRON_CHARGE)
 
     def compute_lux(
         self, luminous_efficiency: Spectrum, max_luminous_efficiency_coefficient: float
     ) -> float:
-        pass
+        """
+        Compute lux in lumen/m^2 for an arbitrary luminous_efficiency function.
 
+        Parameters:
+            luminous_efficiency (Spectrum): arbitrary luminous efficiency spectrum give as Spectrum object.
 
-#     /**
-#  * Compute lux in [lumen/m^2] for an arbitrary luminousEfficiencyFunction. Calculation assumes #getSpectralData in units of [uW/cm^2/nm] (absolute spectral irradiance).
-#  * Calculation replicates Ocean Optics Spectral Processing and Math AdvancedPhotometrics#computeIlluminanceLux.
-#  * Note: user need not specify an incident area in m^2, as method returns lux in lumens/m^2 based upon the collection area in cm^2 for original data.
-#  * Note: #getSpectralWavelengths must match efficiencyFunctionWavelengths. Else, #crop.
-# */
-# double Spectrum::computeLux(    Spectrum & luminousEfficiencyFunction,
-#                                 double & maxLuminousEfficiencyCoefficient ) {
-#     double convertMicrowattToWatt = 1.0 / 1000000.0;
-#     double convertPerCmSquaredToPerMeterSquared = 1.0 / 10000.0;
-#     Spectrum wattsPerMeterSquaredPerNanometer = *this * convertMicrowattToWatt * convertPerCmSquaredToPerMeterSquared;
-#     Spectrum lumensPerMeterSquaredPerNanometer = wattsPerMeterSquaredPerNanometer *= luminousEfficiencyFunction;
-#     return maxLuminousEfficiencyCoefficient * lumensPerMeterSquaredPerNanometer.computeIntegral( lowerBound, upperBound );
-# }
+        Returns:
+            float: lux value
+        """
+        microwatt_to_watt = 1e-6
+        per_cm_sq_to_m_sq = 1e-4
+        watt_per_m_sq_per_nm = self * microwatt_to_watt * per_cm_sq_to_m_sq
+        lumen_per_m_sq_per_nm = watt_per_m_sq_per_nm * luminous_efficiency
+        return (
+            max_luminous_efficiency_coefficient
+            * lumen_per_m_sq_per_nm._trapezoidal_integration()
+        )
+
+    def compute_lux_photopic(self) -> float:
+        """
+        Compute lux in lumen/m^2 for the photopic luminous efficiency spectrum.
+
+        Returns:
+            float: lux value
+        """
+        photopic = Spectrum(
+            spectral_constants.EFFICIENCY_FUNCTION_WAVELENGTHS,
+            spectral_constants.PEAK_PHOTOPIC_LUMINOSITY,
+        )
+        return self.compute_lux(photopic, spectral_constants.PEAK_PHOTOPIC_LUMINOSITY)
+
 
 # /**
 #  * Compute photopic lux in [lumen/m^2]. Calculation assumes #getSpectralData in units of [uW/cm^2/nm] (absolute spectral irradiance).

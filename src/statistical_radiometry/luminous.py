@@ -15,9 +15,10 @@ class Spectrum:
         NOTE: method comments to follow assume standard units of uW/cm^2/nm.
 
         Parameters:
-        wavelengths (list or np.array): abscissa values for spectrum amplitudes
-        amplitudes (list or np.array): spectrum data
+            wavelengths (list or np.array): abscissa values for spectrum amplitudes
+            amplitudes (list or np.array): spectrum data
         """
+        # TODO ensure that wavelengths and amplitudes are actually ndarray or lists
         if len(wavelengths) != len(amplitudes):
             raise SystemError("Length of wavelength and amplitude vectors must match.")
 
@@ -57,17 +58,35 @@ class Spectrum:
             return f"Spectrum(wavelength={self.wavelengths[0]}, amplitude={self.amplitudes[0]})"
         return f"Spectrum(wavelengths={self.wavelengths[0]}... {self.wavelengths[-1]}, amplitudes={self.amplitudes[0]}... {self.amplitudes[-1]})"
 
-    def __mul__(self, s: Union[Spectrum, float, int]) -> Spectrum:
+    def __mul__(
+        self, s: Union[Spectrum, float, int, np.ndarray, list[float], list[int]]
+    ) -> Spectrum:
+        if isinstance(s, float) or isinstance(s, int):
+            return Spectrum(self.wavelengths, self.amplitudes * s)
         if isinstance(s, Spectrum):
             if not np.array_equal(self.wavelengths, s.wavelengths):
                 raise ValueError("Spectra must share an abscissa to be multiplied.")
-            return Spectrum(
-                self.wavelengths, np.multiply(self.amplitudes, s.amplitudes)
+            return Spectrum(self.wavelengths, self.amplitudes * s.amplitudes)
+        if isinstance(s, list):
+            if not all(isinstance(item, (float, int)) for item in s):
+                raise TypeError("One can only multiple a Spectrum with a numeric list.")
+            if len(s) != len(self.amplitudes):
+                raise ValueError(
+                    "One can only multiply a Spectrum with a numeric list of the same length."
+                )
+            return Spectrum(self.wavelengths, s * self.amplitudes)
+        if isinstance(s, np.ndarray):
+            if issubclass(s.dtype.type, np.int_) or issubclass(s.dtype.type, np.float_):
+                if len(s) != len(self.amplitudes):
+                    raise ValueError(
+                        "One can only multiply a Spectrum with a numeric numpy array of the same length."
+                    )
+                return Spectrum(self.wavelengths, s * self.amplitudes)
+            raise TypeError(
+                "One can only multiple a Spectrum with a numeric numpy array."
             )
-        if isinstance(s, float) or isinstance(s, int):
-            return Spectrum(self.wavelengths, self.amplitudes * s)
         raise TypeError(
-            "Spectrum multiplication requires Spectrum objects, or a Spectrum and numeric type."
+            "Spectrum objects can only be multiplied by numeric constants, numeric lists, numeric numpy arrays, or another Spectrum with the same abscissa."
         )
 
     # TODO add appropriate dunder to slice spectral object, e.g., spectrum[i:k] slices amplitude and wavelength indices appropriately
@@ -174,8 +193,7 @@ class Spectrum:
         Determine if a spectrum is saturated, defined as n indices of the same value, where those n indices are necessarily the maximum value.
 
         Parameters:
-        index_tolerance (int, optional): Some number of indices n that, if those indices possess identical values, qualify a spectrum as saturated.
-            Default is 3.
+            index_tolerance (int, optional): Some number of indices n that, if those indices possess identical values, qualify a spectrum as saturated. Default is 3.
 
         Returns:
             bool: if a spectrum is saturated.
@@ -198,9 +216,8 @@ class Spectrum:
         Compute irradiance in [uW/cm^2]. Calculation assumes spectral data in units of [uW/cm^2/nm] (absolute spectral irradiance).
 
         Parameters:
-        lower_bound (float): lower integration bound in abscissa units.
-            Default is smallest amplitude value (0th index).
-        upper_bound (float): upper integration bound in abscissa units.
+            lower_bound (float): lower integration bound in abscissa units. Default is smallest amplitude value (0th index).
+            upper_bound (float): upper integration bound in abscissa units.
             NOTE: lower_bound arguments which do not exactly match an abscissa value are rounded up to the nearest value.
             E.g., only those abscissa values greater than or equal to the specified lower_bound are included in the integration interval.
             The same is true for upper_bound; only those abscissa values less than the upper_bound are included in the interval.
@@ -251,8 +268,8 @@ class Spectrum:
         Compute absolute power in uW.
 
         Parameters:
-        collection_area: incident area for source in cm^2.
-        lower_bound, upper_bound: see #compute_microwatts_per_cm
+            collection_area: incident area for source in cm^2.
+            lower_bound, upper_bound: see #compute_microwatts_per_cm
 
         Returns:
             float: absolute power in uW.
@@ -271,7 +288,7 @@ class Spectrum:
         Compute spectral power in uW/nm.
 
         Parameters:
-        collection_area: see #compute_microwatts
+            collection_area: see #compute_microwatts
 
         Returns:
             float: spectral power in uW/nm
@@ -289,8 +306,8 @@ class Spectrum:
         Compute energy in Joules.
 
         Parameters:
-        integration_time: temporal integration period in seconds.
-        collection_area, lower_bound, upper_bound: see #compute_microwatts
+            integration_time: temporal integration period in seconds.
+            collection_area, lower_bound, upper_bound: see #compute_microwatts
 
         Returns:
             float: total energy in Joules.
@@ -331,13 +348,16 @@ class Spectrum:
         ) * (1 / spectral_constants.ELECTRON_CHARGE)
 
     def compute_lux(
-        self, luminous_efficiency: Spectrum, max_luminous_efficiency_coefficient: float
+        self,
+        luminous_efficiency: Union[Spectrum, list[float]],
+        max_luminous_efficiency_coefficient: float,
     ) -> float:
         """
         Compute lux in lumen/m^2 for an arbitrary luminous_efficiency function.
 
         Parameters:
-            luminous_efficiency (Spectrum): arbitrary luminous efficiency spectrum give as Spectrum object.
+            luminous_efficiency (Spectrum): arbitrary luminous efficiency spectrum given as Spectrum object.
+            max_luminous_efficiency_coefficient (float): a peak value associated with the luminous_efficiency curve.
 
         Returns:
             float: lux value
@@ -353,83 +373,129 @@ class Spectrum:
 
     def compute_lux_photopic(self) -> float:
         """
-        Compute lux in lumen/m^2 for the photopic luminous efficiency spectrum.
+        Compute lux in lumen/m^2 for the photopic luminous efficiency spectrum. See #compute_lux.
 
         Returns:
             float: lux value
         """
         photopic = Spectrum(
             spectral_constants.EFFICIENCY_FUNCTION_WAVELENGTHS,
-            spectral_constants.PEAK_PHOTOPIC_LUMINOSITY,
+            spectral_constants.PHOTOPIC_EFFICIENCY_FUNCTION,
         )
         return self.compute_lux(photopic, spectral_constants.PEAK_PHOTOPIC_LUMINOSITY)
 
+    def compute_lux_scotopic(self) -> float:
+        """
+        Compute lux in lumen/m^2 for the scotopic luminous efficiency spectrum. See #compute_lux.
 
-# /**
-#  * Compute photopic lux in [lumen/m^2]. Calculation assumes #getSpectralData in units of [uW/cm^2/nm] (absolute spectral irradiance).
-#  * See base method #computeLux.
-# */
-# double Spectrum::computeLuxPhotopic( ) {
-#     Spectrum photopic { photopicEfficiencyData, efficiencyFunctionWavelengths };
-#     return computeLux( photopic, peakPhotopicLuminosity );
-# }
+        Returns:
+            float: lux value
+        """
+        scotopic = Spectrum(
+            spectral_constants.EFFICIENCY_FUNCTION_WAVELENGTHS,
+            spectral_constants.PEAK_SCOTOPIC_LUMINOSITY,
+        )
+        return self.compute_lux(scotopic, spectral_constants.PEAK_SCOTOPIC_LUMINOSITY)
 
-# /**
-#  * Compute scotopic lux in [lumen/m^2]. Calculation assumes #getSpectralData in units of [uW/cm^2/nm] (absolute spectral irradiance).
-#  * See base method #computeLux.
-# */
-# double Spectrum::computeLuxScotopic( ) {
-#     Spectrum scotopic { scotopicEfficiencyData, efficiencyFunctionWavelengths };
-#     return computeLux( scotopic, peakScotopicLuminosity );
-# }
+    def compute_lumens(
+        self,
+        luminous_efficiency: Spectrum,
+        max_luminous_efficiency_coefficient: float,
+        collection_area: float,
+    ) -> float:
+        """
+        Compute lumens in units of candella * steradians.
 
-# /**
-#  * Compute lumens. Calculation assumes #getSpectralData in units of [uW/cm^2/nm] (absolute spectral irradiance).
-#  * collectionArea in [cm^2].
-# */
-# double Spectrum::computeLumens( Spectrum & luminousEfficiencyFunction,
-#                                 double & maxLuminousEfficiencyCoefficient,
-#                                 double & collectionArea ) {
-#     double convertPerMeterSquaredToPerCentimeterSquared = 10000.0;
-#     return collectionArea * convertPerMeterSquaredToPerCentimeterSquared * computeLux( luminousEfficiencyFunction, maxLuminousEfficiencyCoefficient );
-# }
+        Parameters:
+            collection_area (float): see #compute_microwatts
+            luminous_efficiency (Spectrum): see #compute_lux
+            max_luminous_efficiency_coefficient (float): see #compute_lux
 
-# /**
-#  * Compute candella in [lumen/steradians]. Calculation assumes #getSpectralData in units of [uW/cm^2/nm] (absolute spectral irradiance).
-#  * Calculation replicates Ocean Optics Spectral Processing and Math AdvancedPhotometrics#computeLuminousIntensityCandela.
-#  * solidAngle in [steradians]. collectionArea in [cm^2].
-# */
-# double Spectrum::computeCandella(   Spectrum & luminousEfficiencyFunction,
-#                                     double & maxLuminousEfficiencyCoefficient,
-#                                     double & collectionArea,
-#                                     double & solidAngle ) {
-#     return computeLumens( luminousEfficiencyFunction, maxLuminousEfficiencyCoefficient, collectionArea ) / solidAngle;
-# }
+        Returns:
+            float: lumen value
+        """
+        per_m_sq_to_per_cm_sq = 1e4
+        return (
+            collection_area
+            * per_m_sq_to_per_cm_sq
+            * self.compute_lux(luminous_efficiency, max_luminous_efficiency_coefficient)
+        )
 
-# /**
-#  * Compute luminous flux in [photons/cm^2/s]. Calculation assumes #getSpectralData in units of [uW/cm^2/nm] (absolute spectral irradiance).
-#  * Calculation replicates Ocean Optics Spectral Processing and Math AdvancedPhotometrics#computePhotonsPerCmSquaredPerSecond.
-# */
-# double Spectrum::computePhotonsPerCmSquaredPerSecond( int & lowerBoundWavelength, int & upperBoundWavelength ) {
-#     std::vector<double> photonsPerCmSquaredPerSecondPerNanometer = {};
-#     double plancksConstant = 6.62607015e-34;
-#     double velocityOfLight = 2.998e8;
-#     double metersToNanometer = 1e-9;
-#     double wattsToMicrowatts = 1e-6;
-#     for ( int i = 0; i < getSpectralData().size(); i++ ) {
-#         photonsPerCmSquaredPerSecondPerNanometer.push_back( (getSpectralData().at(i) * getSpectralWavelengths().at(i) * metersToNanometer * wattsToMicrowatts) / ( plancksConstant * velocityOfLight ) );
-#     }
-#     return Spectrum{ photonsPerCmSquaredPerSecondPerNanometer, getSpectralWavelengths() }.computeIntegral( lowerBound, upperBound );
-# }
+    def compute_candella(
+        self,
+        luminous_efficiency: Spectrum,
+        max_luminous_efficiency_coefficient: float,
+        collection_area: float,
+        solid_angle=float,
+    ) -> float:
+        """
+        Compute candella in units of lumen per steradian.
 
-# /**
-#  * Compute total photons. Calculation assumes #getSpectralData in units of [uW/cm^2/nm] (absolute spectral irradiance).
-#  * Calculation replicates Ocean Optics Spectral Processing and Math AdvancedPhotometrics#computeTotalPhotons.
-#  * integrationTime in [seconds]. collectionArea in [cm^2].
-# */
-# double Spectrum::computeTotalPhotons( int & lowerBoundWavelength, int & upperBoundWavelength, double & collectionArea, double & integrationTime ) {
-#     return computePhotonsPerCmSquaredPerSecond( lowerBoundWavelength, upperBoundWavelength ) * collectionArea * integrationTime;
-# }
+        Parameters
+            collection_area (float): see #compute_microwatts
+            luminous_efficiency (Spectrum): see #compute_lux
+            max_luminous_efficiency_coefficient (float): see #compute_lux
+            solid_angle (float)
+
+        Returns:
+            float: candella value
+        """
+        return (
+            self.compute_lumens(
+                luminous_efficiency,
+                max_luminous_efficiency_coefficient,
+                collection_area,
+            )
+            / solid_angle
+        )
+
+    def compute_luminous_flux(
+        self, lower_bound: Optional[float] = None, upper_bound: Optional[float] = None
+    ):
+        """
+        Compute luminous flux in photons per cm^2 per second.
+
+        Parameters:
+            lower_bound, upper_bound (float, float): see #compute_microwatts_per_sq_cm
+
+        Returns:
+            float: luminous flux
+        """
+        meter_to_nm = 1e-9
+        watts_to_uw = 1e-6
+        photons_per_cm_sq_per_s_per_nm = list()
+        for i, _ in enumerate(self.amplitudes):
+            photons_per_cm_sq_per_s_per_nm.append(
+                (self.amplitudes[i] * self.wavelengths[i] * meter_to_nm * watts_to_uw)
+                / (spectral_constants.PLANCKS_CONSTANT * spectral_constants.C)
+            )
+        return Spectrum(
+            self.wavelengths, photons_per_cm_sq_per_s_per_nm
+        )._trapezoidal_integration(lower_bound, upper_bound)
+
+    def compute_total_photons(
+        self,
+        collection_area: float,
+        integration_time: float,
+        lower_bound: Optional[float] = None,
+        upper_bound: Optional[float] = None,
+    ):
+        """
+        Compute total photons.
+
+        Parameters:
+            lower_bound, upper_bound (float, float): see #compute_microwatts_per_sq_cm.
+            collection_area: incident area for source in cm^2.
+            integration_time: collection temporal integration in seconds.
+
+        Results:
+            float: total photons
+        """
+        return (
+            self.compute_luminous_flux(lower_bound, upper_bound)
+            * collection_area
+            * integration_time
+        )
 
 
 #
@@ -446,22 +512,93 @@ def plot(s: Spectrum):
 
 # amplitudes = [0.027, 0.082, 0.082, 0.27, 0.826, 2.732, 7.923, 15.709, 25.954, 40.98, 62.139, 94.951, 142.078, 220.609, 303.464, 343.549, 484.93, 588.746, 651.582, 679.551, 683, 679.585, 650.216, 594.21, 517.031, 430.973, 343.549, 260.223, 180.995, 119.525, 73.081, 41.663, 21.856, 11.611, 5.607, 2.802, 1.428, 0.715, 0.355, 0.17, 0.082, 0.041, 0.02]
 # wavelengths = [380, 390, 391, 400, 410, 420, 430, 440, 450, 460, 470, 480, 490, 500, 507, 510, 520, 530, 540, 550, 555, 560, 570, 580, 590, 600, 610, 620, 630, 640, 650, 660, 670, 680, 690, 700, 710, 720, 730, 740, 750, 760, 770]
-wavelengths = np.linspace(1 / 1000, np.pi, 1000)
-amplitudes = np.sin(20 * wavelengths) * np.sin(wavelengths)
-# amplitudes[34] = .8
-# amplitudes[35] = .8
-# amplitudes[36] = .8
+# wavelengths = np.linspace(1 / 1000, np.pi, 1000)
+# amplitudes = np.sin(20 * wavelengths) * np.sin(wavelengths)
+
+amplitudes = [
+    79,
+    363,
+    50,
+    821,
+    984,
+    948,
+    694,
+    855,
+    214,
+    197,
+    695,
+    6,
+    402,
+    639,
+    101,
+    242,
+    672,
+    590,
+    808,
+    459,
+    853,
+    971,
+    264,
+    293,
+    443,
+    608,
+    453,
+    17,
+    923,
+    108,
+    533,
+    874,
+    633,
+    773,
+    51,
+    723,
+    747,
+    623,
+    723,
+    545,
+    999,
+    116,
+    481,
+]
+wavelengths = spectral_constants.EFFICIENCY_FUNCTION_WAVELENGTHS
+
+collection_area = 2
+solid_angle = 1
+integration_time = 3
 
 s = Spectrum(wavelengths, amplitudes)
-print("String of 0th index: " + str(s[0]))
-print("Length: " + str(len(s)))
-print("String of object: " + str(s))
-p = s.peak_indices([0.5, 1])
-print("Peaks: " + str(p))
-print(f"0th peak index={p[0]}, value={amplitudes[p[0]]}")
-print("FWHM: " + str(s.full_width_half_max(p[0])))
-print("saturated? " + str(s.is_saturated()))
 print(
-    "irradiance: " + str(s.compute_microwatts_per_sq_cm(lower_bound=1.2, upper_bound=3))
+    f"uWatt per cm^2: {s.compute_microwatts_per_sq_cm(lower_bound=None, upper_bound=None)}"
 )
-plot(s * 3.13)
+print(
+    f"uWatt: {s.compute_microwatts(lower_bound=None, upper_bound=None, collection_area=collection_area)}"
+)
+print(
+    f"Joules: {s.compute_joules(lower_bound=None, upper_bound=None, collection_area=collection_area, integration_time=integration_time)}"
+)
+print(
+    f"eV: {s.compute_electron_volts(lower_bound=None, upper_bound=None, collection_area=collection_area, integration_time=integration_time)}"
+)
+print(f"Lux: {s.compute_lux_photopic()}")
+print(
+    f"Candella: {s.compute_candella(luminous_efficiency=spectral_constants.PHOTOPIC_EFFICIENCY_FUNCTION, max_luminous_efficiency_coefficient=spectral_constants.PEAK_PHOTOPIC_LUMINOSITY, collection_area=collection_area, solid_angle=solid_angle)}"
+)
+print(
+    f"Photons per cm^2 per s: {s.compute_luminous_flux(lower_bound=None, upper_bound=None)}"
+)
+print(
+    f"Total photons: {s.compute_total_photons(lower_bound=None, upper_bound=None, collection_area=collection_area, integration_time=integration_time)}"
+)
+
+# print("String of 0th index: " + str(s[0]))
+# print("Length: " + str(len(s)))
+# print("String of object: " + str(s))
+# p = s.peak_indices([0.5, 1])
+# print("Peaks: " + str(p))
+# print(f"0th peak index={p[0]}, value={amplitudes[p[0]]}")
+# print("FWHM: " + str(s.full_width_half_max(p[0])))
+# print("saturated? " + str(s.is_saturated()))
+# print(
+#     "irradiance: " + str(s.compute_microwatts_per_sq_cm(lower_bound=1.2, upper_bound=3))
+# )
+# plot(s * 3.13)

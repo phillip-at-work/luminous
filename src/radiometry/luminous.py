@@ -61,6 +61,9 @@ class Spectrum:
     def __mul__(
         self, s: Union[Spectrum, float, int, np.ndarray, list[float], list[int]]
     ) -> Spectrum:
+        """
+        Supports multiplication of Spectrum with scalar, numeric list (abscissa retained), numeric numpy array (abscissa retained), or another Spectrum (abscissa retained).
+        """
         if isinstance(s, float) or isinstance(s, int):
             return Spectrum(self.wavelengths, self.amplitudes * s)
         if isinstance(s, Spectrum):

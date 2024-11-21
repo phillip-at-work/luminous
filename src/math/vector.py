@@ -1,10 +1,9 @@
 import numpy as np
-from abc import ABC, abstractmethod
 
 from .tools import extract
 
 
-class Vector(ABC):
+class Vector():
 
     def __init__(self, x, y, z):
         (self.x, self.y, self.z) = (x, y, z)
@@ -20,6 +19,12 @@ class Vector(ABC):
 
     def dot(self, other):
         return (self.x * other.x) + (self.y * other.y) + (self.z * other.z)
+        
+    def cross(self, other, normalize=True):
+        cross_product = Vector(self.y * other.z - self.z * other.y,
+                               self.z * other.x - self.x * other.z,
+                               self.x * other.y - self.y * other.x)
+        return cross_product.norm() if normalize else cross_product
 
     def __abs__(self):
         return self.dot(self)

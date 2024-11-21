@@ -18,30 +18,55 @@ FARAWAY = 1.0e39
 
 class Scene:
 
-    def __init__(self, source: Source, detector: Detector):
+    def __init__(self, source: Source, detector: Detector) -> None:
 
-        # TODO
-        # add parameters to `init` associated with default objects
-        # e.g., if a user doesn't pass in a `Medium`, make one with a default config
+        self.start_time = time.perf_counter()
 
-        self.detector_width = detector.width
-        self.detector_height = detector.height
+        self.detector_width: float = detector.width
+        self.detector_height: float = detector.height
+        self.detector_pos: Vector = detector.position
+        detector_pointing_direction: Vector = detector.pointing_direction
+
+        self.source_pos: Vector = source.position
+        source_pointing_direction: Vector = source.pointing_direction # TODO implement when directional source exists
+
+        detector_screen: Vector = self.create_screen_coord(detector.width, detector.height)
+        self.detector_pixels: Vector = self.compute_ray_directions(detector_pointing_direction, detector_screen)
 
         self.elements = list()
 
-        self.source_pos: Vector = source.position
-        self.detector_pos: Vector = detector.position
-        self.Q = self.vector_field(detector.width, detector.height)
-        self.ray_dir: Vector = (self.Q - self.detector_pos).norm()
 
-    def vector_field(self, w, h):
-        r = float(w) / h
-        S = (-1, 1 / r + 0.25, 1, -1 / r + 0.25)
-        x_vals = np.linspace(S[0], S[2], w)
-        y_vals = np.linspace(S[1], S[3], h)
-        x = np.tile(x_vals, h)
-        y = np.repeat(y_vals, w)
-        return Vector(x, y, 0)
+    def compute_ray_directions(self, camera_normal: Vector, detector_screen):
+        up = Vector(0, 1, 0)
+        right = camera_normal.cross(up, normalize=False)
+        initial_ray_dir = (detector_screen - self.detector_pos).norm()
+        
+        right_components = right.components()
+        up_components = up.components()
+        normal_components = camera_normal.components()
+        
+        original_vectors = np.stack((initial_ray_dir.x, initial_ray_dir.y, initial_ray_dir.z), axis=-1)
+        rotated_vectors = np.dot(original_vectors, [right_components, up_components, normal_components])
+        ray_dir_x, ray_dir_y, ray_dir_z = rotated_vectors.T
+        
+        return Vector(ray_dir_x, ray_dir_y, ray_dir_z)
+        
+    def create_screen_coord(self, w, h, vertical_screen_shift=0, horizontal_screen_shift=0) -> Vector:
+        '''
+        Create and return a Vector where each nth component of the vector represents one unique pixel in the detection screen;
+        where the larger detector axis is normalized to +/- 1 and the smaller axis is scaled to aspect ratio.
+        The detector screen surface is necessarily centered on 0 (x-y plane) by default.
+        '''
+        aspect_ratio = w / h
+        screen = (  -1 + horizontal_screen_shift, 
+                    1 / aspect_ratio + vertical_screen_shift, 
+                    1 + horizontal_screen_shift, 
+                    -1 / aspect_ratio + vertical_screen_shift)
+        w_row = np.linspace(screen[0], screen[2], w)
+        h_col = np.linspace(screen[1], screen[3], h)
+        rows = np.tile(w_row, h)
+        columns = np.repeat(h_col, w)
+        return Vector(rows, columns, 0)
 
     def __iadd__(self, obj):
         if not isinstance(obj, Element):
@@ -54,7 +79,7 @@ class Scene:
         if origin is None:
             origin = self.detector_pos
         if direction is None:
-            direction = self.ray_dir
+            direction = self.detector_pixels
         if elements is None:
             elements = self.elements
 
@@ -95,6 +120,9 @@ class Scene:
         ]
 
         return Image.merge("RGB", rgb)
+    
+    def elaspsed_time(self):
+        return time.perf_counter() - self.start_time
 
 
 ##
@@ -172,7 +200,7 @@ class Sphere(Element):
         color += self.diffusecolor(M) * lv * seelight
 
         # Reflection
-        if bounce < 10:
+        if bounce < 2:
             rayD = (D - N * 2 * D.dot(N)).norm()
             color += scene.raytrace(nudged, rayD, elements, bounce + 1) * self.mirror
 

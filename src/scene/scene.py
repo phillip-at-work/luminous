@@ -9,6 +9,10 @@ from ..source.source import Source
 from PIL import Image
 import time
 
+from luminous.src.utilities.logconfig import setup_logging
+import logging
+logger = logging.getLogger('luminous.scene')
+
 FARAWAY = 1.0e39
 
 ##
@@ -18,23 +22,9 @@ FARAWAY = 1.0e39
 
 class Scene:
 
-    def __init__(self, source: Source, detector: Detector) -> None:
-
-        self.start_time = time.perf_counter()
-
-        self.detector_width: float = detector.width
-        self.detector_height: float = detector.height
-        self.detector_pos: Vector = detector.position
-        detector_pointing_direction: Vector = detector.pointing_direction
-
-        self.source_pos: Vector = source.position
-        source_pointing_direction: Vector = source.pointing_direction # TODO implement when directional source exists
-
-        detector_screen: Vector = self.create_screen_coord(detector.width, detector.height)
-        self.detector_pixels: Vector = self.compute_ray_directions(detector_pointing_direction, detector_screen)
-
+    def __init__(self, log_level=20, log_file="./results/luminous_logs.log") -> None:
+        setup_logging(name='luminous', level=log_level, log_file=log_file)
         self.elements = list()
-
 
     def compute_ray_directions(self, camera_normal: Vector, detector_screen):
         up = Vector(0, 1, 0)
@@ -69,13 +59,35 @@ class Scene:
         return Vector(rows, columns, 0)
 
     def __iadd__(self, obj):
-        if not isinstance(obj, Element):
-            raise TypeError("Only Elements can be added to Scenes!")
-        self.elements.append(obj)
+        if isinstance(obj, Element):
+            self.elements.append(obj)
+        elif isinstance(obj, Source):
+            # TODO if self.source is not None, warn a user that they're overwriting their Source
+            self.source = obj
+        elif isinstance(obj, Detector):
+            # TODO warn
+            self.detector = obj
+        else:
+            raise TypeError("Only Elements, Sources, and Detectors can be added to Scenes!")
+
         return self
+        
+    def raytrace(self, origin=None, direction=None, elements=None, bounce=0, init=True):
 
-    def raytrace(self, origin=None, direction=None, elements=None, bounce=0):
+        if init:
+            self.start_time = time.perf_counter()
 
+            self.detector_width: float = self.detector.width
+            self.detector_height: float = self.detector.height
+            self.detector_pos: Vector = self.detector.position
+            detector_pointing_direction: Vector = self.detector.pointing_direction
+
+            self.source_pos: Vector = self.source.position
+            # TODO source should also have pointing direction, like detector. for an isotropic source, use arbitrary default.
+            source_pointing_direction: Vector = self.source.pointing_direction
+
+            detector_screen: Vector = self.create_screen_coord(self.detector.width, self.detector.height)
+            self.detector_pixels: Vector = self.compute_ray_directions(detector_pointing_direction, detector_screen)
         if origin is None:
             origin = self.detector_pos
         if direction is None:
@@ -202,7 +214,7 @@ class Sphere(Element):
         # Reflection
         if bounce < 2:
             rayD = (D - N * 2 * D.dot(N)).norm()
-            color += scene.raytrace(nudged, rayD, elements, bounce + 1) * self.reflectance
+            color += scene.raytrace(nudged, rayD, elements, bounce + 1, init=False) * self.reflectance
 
         # Blinn-Phong shading (specular)
         phong = N.dot((to_source + to_origin).norm())

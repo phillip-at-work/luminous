@@ -143,11 +143,11 @@ class PolygonVolume(Element):
 
 
 class Sphere(Element):
-    def __init__(self, center: Vector, radius: float, diffuse: Vector, mirror=0.5):
+    def __init__(self, center: Vector, radius: float, color: Vector, reflectance=0.5):
         self.center = center
         self.radius = radius
-        self.diffuse = diffuse
-        self.mirror = mirror
+        self.color = color
+        self.reflectance = reflectance
 
     def intersect(self, origin: Vector, direction: Vector):
         b = 2 * direction.dot(origin - self.center)
@@ -166,8 +166,8 @@ class Sphere(Element):
         val = np.where(pred, h, FARAWAY)
         return val
 
-    def diffusecolor(self, M):
-        return self.diffuse
+    def diffuse_color(self, M):
+        return self.color
 
     def light(  # TODO rename
         self,
@@ -197,12 +197,12 @@ class Sphere(Element):
 
         # Lambert shading (diffuse)
         lv = np.maximum(N.dot(to_source), 0)
-        color += self.diffusecolor(M) * lv * seelight
+        color += self.diffuse_color(M) * lv * seelight
 
         # Reflection
         if bounce < 2:
             rayD = (D - N * 2 * D.dot(N)).norm()
-            color += scene.raytrace(nudged, rayD, elements, bounce + 1) * self.mirror
+            color += scene.raytrace(nudged, rayD, elements, bounce + 1) * self.reflectance
 
         # Blinn-Phong shading (specular)
         phong = N.dot((to_source + to_origin).norm())
@@ -211,6 +211,6 @@ class Sphere(Element):
 
 
 class CheckeredSphere(Sphere):
-    def diffusecolor(self, M):
+    def diffuse_color(self, M):
         checker = ((M.x * 2).astype(int) % 2) == ((M.z * 2).astype(int) % 2)
-        return self.diffuse * checker
+        return self.color * checker

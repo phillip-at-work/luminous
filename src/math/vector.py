@@ -47,3 +47,35 @@ class Vector():
         np.place(r.y, cond, self.y)
         np.place(r.z, cond, self.z)
         return r
+    
+    def __str__(self):
+        '''
+        Print a vector as labelled columns.
+        Method is generally slow and should be considered as a debug tool only.
+        '''
+
+        x_array = np.atleast_1d(self.x).astype(float)
+        y_array = np.atleast_1d(self.y).astype(float)
+        z_array = np.atleast_1d(self.z).astype(float)
+
+        max_length = max(len(x_array), len(y_array), len(z_array))
+
+        x_array = np.pad(x_array, (0, max_length - len(x_array)), constant_values=np.nan)
+        y_array = np.pad(y_array, (0, max_length - len(y_array)), constant_values=np.nan)
+        z_array = np.pad(z_array, (0, max_length - len(z_array)), constant_values=np.nan)
+
+        max_len_x = max(len(f"{x:.1f}") for x in x_array if not np.isnan(x))
+        max_len_y = max(len(f"{y:.1f}") for y in y_array if not np.isnan(y))
+        max_len_z = max(len(f"{z:.1f}") for z in z_array if not np.isnan(z))
+
+        max_len = max(max_len_x, max_len_y, max_len_z)
+
+        header = f"{'x'.center(max_len)}    {'y'.center(max_len)}    {'z'.center(max_len)}\n"
+
+        x_str = "\n".join(f"{x:>{max_len}.1f}" if not np.isnan(x) else ' ' * max_len for x in x_array)
+        y_str = "\n".join(f"{y:>{max_len}.1f}" if not np.isnan(y) else ' ' * max_len for y in y_array)
+        z_str = "\n".join(f"{z:>{max_len}.1f}" if not np.isnan(z) else ' ' * max_len for z in z_array)
+
+        vector_str = "\n".join(f"{x_val}    {y_val}    {z_val}" for x_val, y_val, z_val in zip(x_str.splitlines(), y_str.splitlines(), z_str.splitlines()))
+
+        return header + vector_str

@@ -1,13 +1,15 @@
 from functools import reduce
 import numpy as np
 from abc import ABC
+from PIL import Image
+import time
+import atexit
 
 from ..math.vector import Vector
 from ..math.tools import extract
 from ..detector.detector import Detector
 from ..source.source import Source
-from PIL import Image
-import time
+from luminous.src.utilities.ray_debugger import NullRayDebugger, ConcreteRayDebugger
 
 from luminous.src.utilities.logconfig import setup_logging
 import logging
@@ -22,12 +24,17 @@ FARAWAY = 1.0e39
 
 class Scene:
 
-    def __init__(self, log_level=20, log_file="./results/luminous_logs.log") -> None:
+    def __init__(self, log_level=20, log_file="luminous.log") -> None:
         setup_logging(name='luminous', level=log_level, log_file=log_file)
         self.elements = list()
+        self.ray_debugger = NullRayDebugger()
+
+    def attach_ray_debugger(self):
+        self.ray_debugger = ConcreteRayDebugger()
+        atexit.register(self.ray_debugger.plot)
 
     def compute_ray_directions(self, camera_normal: Vector, detector_screen):
-        up = Vector(0, 1, 0)
+        up = Vector(0, 0, 1) # (0,0,1)?
         right = camera_normal.cross(up, normalize=False)
         initial_ray_dir = (detector_screen - self.detector_pos).norm()
         

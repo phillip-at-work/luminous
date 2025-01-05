@@ -29,12 +29,16 @@ class Scene:
         self.elements = list()
         self.ray_debugger = NullRayDebugger()
 
-    def attach_ray_debugger(self):
+    def attach_ray_debugger(self, path="./results", filename="debug_ray_trace", display_3d_plot=False):
         self.ray_debugger = ConcreteRayDebugger()
-        atexit.register(self.ray_debugger.plot)
+
+        def plot_ray_trace_warp_user_args():
+            self.ray_debugger.plot(path=path, filename=filename, display_3d_plot=display_3d_plot)
+        atexit.register(plot_ray_trace_warp_user_args)
 
     def compute_ray_directions(self, camera_normal: Vector, detector_screen):
-        up = Vector(0, 0, 1) # (0,0,1)?
+        up = Vector(0, 1, 0) # TODO (0,0,1)?
+        self.ray_debugger.add_vector(end_point=up.components(), color=[1,0,0])
         right = camera_normal.cross(up, normalize=False)
         initial_ray_dir = (detector_screen - self.detector_pos).norm()
         

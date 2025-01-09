@@ -32,13 +32,12 @@ class Scene:
     def attach_ray_debugger(self, path="./results", filename="debug_ray_trace", display_3d_plot=False):
         self.ray_debugger = ConcreteRayDebugger()
 
-        def plot_ray_trace_warp_user_args():
+        def plot_ray_trace_wrap_user_args():
             self.ray_debugger.plot(path=path, filename=filename, display_3d_plot=display_3d_plot)
-        atexit.register(plot_ray_trace_warp_user_args)
+        atexit.register(plot_ray_trace_wrap_user_args)
 
     def compute_ray_directions(self, camera_normal: Vector, detector_screen):
         up = Vector(0, 1, 0) # TODO (0,0,1)?
-        self.ray_debugger.add_vector(end_point=up.components(), color=[1,0,0])
         right = camera_normal.cross(up, normalize=False)
         initial_ray_dir = (detector_screen - self.detector_pos).norm()
         
@@ -48,7 +47,7 @@ class Scene:
         
         original_vectors = np.stack((initial_ray_dir.x, initial_ray_dir.y, initial_ray_dir.z), axis=-1)
         rotated_vectors = np.dot(original_vectors, [right_components, up_components, normal_components])
-        ray_dir_x, ray_dir_y, ray_dir_z = rotated_vectors.T
+        ray_dir_x, ray_dir_y, ray_dir_z = rotated_vectors.T.astype(np.float64)
         
         return Vector(ray_dir_x, ray_dir_y, ray_dir_z)
         
@@ -99,6 +98,13 @@ class Scene:
 
             detector_screen: Vector = self.create_screen_coord(self.detector.width, self.detector.height)
             self.detector_pixels: Vector = self.compute_ray_directions(detector_pointing_direction, detector_screen)
+
+            # debug ray plotting: detector
+            self.ray_debugger.add_point(self.detector_pos, color=(0,255,0)) # R
+            # detector_dir_translate = self.detector_pos + detector_pointing_direction
+            # self.ray_debugger.add_vector(start_point=self.detector_pos, end_point=detector_dir_translate, color=(255,0,0)) # B
+            self.ray_debugger.add_point(end_point=self.detector_pixels, color=(0,0,255))
+
         if origin is None:
             origin = self.detector_pos
         if direction is None:

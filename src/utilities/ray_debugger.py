@@ -28,12 +28,11 @@ class ConcreteRayDebugger(RayDebugger):
         import vtk
         self.vtk = vtk
         self.point_radius = point_radius
+        # TODO shaft_radius, head_radius, and head_length intended for vectors
         self.shaft_radius = shaft_radius
         self.head_radius = head_radius
         self.head_length = head_length
-        self.renderer = vtk.vtkRenderer()
         self.points = vtk.vtkPoints()
-        self.vectors = vtk.vtkCellArray()
         self.scalars = vtk.vtkFloatArray()
         self.lookup_table = vtk.vtkLookupTable()
         self.luminous_dialog_title = "luminous ray debugger"
@@ -64,13 +63,31 @@ class ConcreteRayDebugger(RayDebugger):
             self.points.InsertNextPoint(end_point)
             self.scalars.InsertNextValue(color_scalar)
 
+    def add_vector(self, end_point, start_point=(0,0,0), color=(0,0,0)):
+
+        color_scalar = color[0] * 256 * 256 + color[1] * 256 + color[2]
+
+        if isinstance(end_point, Vector):
+            end_point = end_point.components()
+        if isinstance(start_point, Vector):
+            start_point = start_point.components()
+
+        try:
+            for x_end, y_end, z_end, x_start, y_start, z_start in zip(*end_point, *start_point):
+                # TODO append multiple vectors to appropriate data structure
+                pass
+                
+        except TypeError:
+            # TODO append one vector to appropriate data structure
+            pass
 
     def plot(self, path="./results", filename="debug_ray_trace", display_3d_plot=False):
         os.makedirs(path, exist_ok=True)
         full_path = os.path.join(path, filename)
 
+        renderer = self.vtk.vtkRenderer()
         render_window = self.vtk.vtkRenderWindow()
-        render_window.AddRenderer(self.renderer)
+        render_window.AddRenderer(renderer)
 
         sphere_source = self.vtk.vtkSphereSource()
         sphere_source.SetRadius(self.point_radius)
@@ -96,9 +113,9 @@ class ConcreteRayDebugger(RayDebugger):
         glyph_actor = self.vtk.vtkActor()
         glyph_actor.SetMapper(glyph_mapper)
 
-        self.renderer.AddActor(glyph_actor)
+        renderer.AddActor(glyph_actor)
 
-        self.renderer.GetRenderWindow().Render()
+        renderer.GetRenderWindow().Render()
 
         if display_3d_plot:
 
@@ -113,7 +130,7 @@ class ConcreteRayDebugger(RayDebugger):
 
             cube_axes = self.vtk.vtkCubeAxesActor()
             cube_axes.SetBounds(bounds)
-            cube_axes.SetCamera(self.renderer.GetActiveCamera())
+            cube_axes.SetCamera(renderer.GetActiveCamera())
             cube_axes.GetTitleTextProperty(0).SetColor(1, 1, 1)
             cube_axes.GetTitleTextProperty(1).SetColor(1, 1, 1)
             cube_axes.GetTitleTextProperty(2).SetColor(1, 1, 1)
@@ -133,8 +150,8 @@ class ConcreteRayDebugger(RayDebugger):
             cube_axes.YAxisMinorTickVisibilityOff()
             cube_axes.ZAxisMinorTickVisibilityOff()
 
-            self.renderer.AddActor(cube_axes)
-            self.renderer.SetBackground(0,0,0)
+            renderer.AddActor(cube_axes)
+            renderer.SetBackground(0,0,0)
 
             render_window_interactor = self.vtk.vtkRenderWindowInteractor()
             render_window_interactor.SetRenderWindow(render_window)

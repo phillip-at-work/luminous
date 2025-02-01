@@ -105,37 +105,37 @@ class ConcreteRayDebugger(RayDebugger):
  
         # points
         if self.points.GetNumberOfPoints() > 0:
-            sphere_source = self.vtk.vtkSphereSource()
-            sphere_source.SetRadius(self.point_radius)
-            sphere_source.SetPhiResolution(16)
-            sphere_source.SetThetaResolution(16)
-            sphere_source.Update()
+            point_source = self.vtk.vtkSphereSource()
+            point_source.SetRadius(self.point_radius)
+            point_source.SetPhiResolution(16)
+            point_source.SetThetaResolution(16)
+            point_source.Update()
     
             point_polydata = self.vtk.vtkPolyData()
             point_polydata.SetPoints(self.points)
             point_polydata.GetPointData().SetScalars(self.point_color_scalars)
     
             point_glyphs = self.vtk.vtkGlyph3D()
-            point_glyphs.SetSourceConnection(sphere_source.GetOutputPort())
+            point_glyphs.SetSourceConnection(point_source.GetOutputPort())
             point_glyphs.SetInputData(point_polydata)
             point_glyphs.ScalingOff()
             point_glyphs.Update()
     
-            glyph_mapper = self.vtk.vtkPolyDataMapper()
-            glyph_mapper.SetInputConnection(point_glyphs.GetOutputPort())
-            glyph_mapper.SetLookupTable(self.lookup_table)
-            glyph_mapper.SetScalarRange(0, 256*256*256 - 1)
+            point_mapper = self.vtk.vtkPolyDataMapper()
+            point_mapper.SetInputConnection(point_glyphs.GetOutputPort())
+            point_mapper.SetLookupTable(self.lookup_table)
+            point_mapper.SetScalarRange(0, 256*256*256 - 1)
     
-            glyph_actor = self.vtk.vtkActor()
-            glyph_actor.SetMapper(glyph_mapper)
+            point_actor = self.vtk.vtkActor()
+            point_actor.SetMapper(point_mapper)
  
-            renderer.AddActor(glyph_actor)
+            renderer.AddActor(point_actor)
  
         # vectors
         if self.vector_points.GetNumberOfPoints() > 0:
 
             # TODO consider batch transform for vector plotting efficiency
-            
+
             arrow_source = self.vtk.vtkArrowSource()
             arrow_source.SetShaftRadius(self.shaft_radius)
             arrow_source.SetTipRadius(self.head_radius)

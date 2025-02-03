@@ -3,12 +3,20 @@ from luminous.src.math.vector import Vector
 import math
 import numpy as np
 import datetime
+import abc
 
-class RayDebugger:
+class RayDebugger(abc.ABC):
+    @abc.abstractmethod
     def add_vector(self, start_point, end_point, color):
-        raise NotImplementedError("Only NullRayDebugger or ConcreteRayDebugger should be instantiated.")
+        pass
+
+    @abc.abstractmethod
     def add_point(self, end_point, color):
-        raise NotImplementedError("Only NullRayDebugger or ConcreteRayDebugger should be instantiated.")
+        pass
+
+    @abc.abstractmethod
+    def plot(self):
+        pass
 
 class NullRayDebugger(RayDebugger):
     '''
@@ -83,11 +91,20 @@ class ConcreteRayDebugger(RayDebugger):
  
     def add_vector(self, start_point, end_point, color=(0,0,0)):
 
+        color_scalar = color[0] * 256 * 256 + color[1] * 256 + color[2]
+
+        try:
+            for (s_x, s_y, s_z), (e_x, e_y, e_z) in zip(start_point, end_point):
+                self._insert_vector((s_x, s_y, s_z), (e_x, e_y, e_z), color_scalar)
+        except TypeError:
+            self._insert_vector(start_point, end_point, color_scalar)
+
+    def _insert_vector(self, start_point, end_point, color_scalar):
         if isinstance(end_point, Vector):
             end_point = end_point.components()
         if isinstance(start_point, Vector):
             start_point = start_point.components()
-        
+
         vector = [e - s for e, s in zip(end_point, start_point)]
         vector_magnitude = math.sqrt(sum(v ** 2 for v in vector))
 
@@ -95,7 +112,7 @@ class ConcreteRayDebugger(RayDebugger):
 
         self.vector_points.InsertNextPoint(start_point)
         self.vector_directions.InsertNextTuple(normalized_vector)
-        self.vector_color_scalars.InsertNextTuple3(color[0], color[1], color[2])
+        self.vector_color_scalars.InsertNextTuple3(color_scalar // (256*256), (color_scalar // 256) % 256, color_scalar % 256)
         self.vector_magnitudes.InsertNextValue(vector_magnitude)
 
     def save_screenshot_callback(self, interactor, event):
@@ -115,7 +132,7 @@ class ConcreteRayDebugger(RayDebugger):
             image_writer.SetInputConnection(window_to_image_filter.GetOutputPort())
             image_writer.Write()
 
-    def plot(self, path="./results", filename="debug_ray_trace", display_3d_plot=True):
+    def plot(self, path, filename, display_3d_plot):
 
         self.path = path
         self.filename = filename

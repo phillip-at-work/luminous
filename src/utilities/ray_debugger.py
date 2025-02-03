@@ -2,6 +2,7 @@ import os
 from luminous.src.math.vector import Vector
 import math
 import numpy as np
+import datetime
 
 class RayDebugger:
     def add_vector(self, start_point, end_point, color):
@@ -26,11 +27,14 @@ class ConcreteRayDebugger(RayDebugger):
     Actual RayDebugger compiles data and plots rays.
     '''
  
-    def __init__(self, point_radius=0.01, shaft_radius=0.05, head_radius=0.1, head_length=0.2):
+    def __init__(self, point_radius=0.01, shaft_radius=0.01, head_radius=0.015, head_length=0.05):
         import vtk
         self.vtk = vtk
 
-        # vectors, WIP
+        self.screenshot_counter = 0
+        self.timestamp = datetime.datetime.now().strftime("%m%d%y%H%M%S")
+
+        # vectors
         self.shaft_radius = shaft_radius
         self.head_radius = head_radius
         self.head_length = head_length
@@ -86,19 +90,37 @@ class ConcreteRayDebugger(RayDebugger):
         
         vector = [e - s for e, s in zip(end_point, start_point)]
         vector_magnitude = math.sqrt(sum(v ** 2 for v in vector))
-        
+
         normalized_vector = [v / vector_magnitude for v in vector]
-        
+
         self.vector_points.InsertNextPoint(start_point)
         self.vector_directions.InsertNextTuple(normalized_vector)
         self.vector_color_scalars.InsertNextTuple3(color[0], color[1], color[2])
         self.vector_magnitudes.InsertNextValue(vector_magnitude)
 
-    def plot(self, path="./results", filename="debug_ray_trace", display_3d_plot=False):
+    def save_screenshot_callback(self, interactor, event):
+        key = interactor.GetKeySym()
+        if key == 's':
+            self.screenshot_counter += 1
+            screenshot_filename = f"{self.filename}_{self.timestamp}_{self.screenshot_counter}.png"
+            screenshot_full_path = os.path.join(self.path, screenshot_filename)
+            print(f"Saving screenshot as: {screenshot_full_path}")
 
-        os.makedirs(path, exist_ok=True)
-        full_path = os.path.join(path, filename)
- 
+            window_to_image_filter = self.vtk.vtkWindowToImageFilter()
+            window_to_image_filter.SetInput(interactor.GetRenderWindow())
+            window_to_image_filter.Update()
+
+            image_writer = self.vtk.vtkPNGWriter()
+            image_writer.SetFileName(screenshot_full_path)
+            image_writer.SetInputConnection(window_to_image_filter.GetOutputPort())
+            image_writer.Write()
+
+    def plot(self, path="./results", filename="debug_ray_trace", display_3d_plot=True):
+
+        self.path = path
+        self.filename = filename
+        os.makedirs(self.path, exist_ok=True)
+
         renderer = self.vtk.vtkRenderer()
         render_window = self.vtk.vtkRenderWindow()
         render_window.AddRenderer(renderer)
@@ -133,9 +155,6 @@ class ConcreteRayDebugger(RayDebugger):
  
         # vectors
         if self.vector_points.GetNumberOfPoints() > 0:
-
-            # TODO consider batch transform for vector plotting efficiency
-
             arrow_source = self.vtk.vtkArrowSource()
             arrow_source.SetShaftRadius(self.shaft_radius)
             arrow_source.SetTipRadius(self.head_radius)
@@ -150,13 +169,13 @@ class ConcreteRayDebugger(RayDebugger):
 
                 transform = self.vtk.vtkTransform()
                 transform.Translate(start_point)
-                transform.Scale(vector_magnitude, vector_magnitude, vector_magnitude)
 
                 original_vector = [1, 0, 0]
                 cross_product = np.cross(original_vector, vector_direction)
                 dot_product = np.dot(original_vector, vector_direction)
                 angle = np.arccos(dot_product) * 180 / np.pi
                 transform.RotateWXYZ(angle, cross_product)
+                transform.Scale(vector_magnitude, 1, 1)
 
                 transform_filter = self.vtk.vtkTransformPolyDataFilter()
                 transform_filter.SetTransform(transform)
@@ -218,34 +237,23 @@ class ConcreteRayDebugger(RayDebugger):
             renderer.AddActor(cube_axes)
             renderer.SetBackground(0,0,0)
 
+            instructions = self.vtk.vtkTextActor()
+            instructions.SetInput("Press 's' to save a screenshot")
+            instructions.GetTextProperty().SetColor(1, 1, 1)
+            instructions.GetTextProperty().SetFontSize(24)
+            instructions.SetPosition(10, 10)
+            renderer.AddActor(instructions)
+
             render_window_interactor = self.vtk.vtkRenderWindowInteractor()
             render_window_interactor.SetRenderWindow(render_window)
 
+            render_window_interactor.AddObserver("KeyPressEvent", self.save_screenshot_callback)
+
             render_window_interactor.Initialize()
             render_window.SetWindowName(self.luminous_dialog_title)
-
             render_window.Render()
             render_window_interactor.Start()
+            
         else:
             render_window.SetOffScreenRendering(1)
             render_window.Render()
- 
-        # TODO revise ply implementation
-
-        color_array = self.vtk.vtkUnsignedCharArray()
-        color_array.SetNumberOfComponents(3)
-        color_array.SetName("Point_Colors")
-        for i in range(self.points.GetNumberOfPoints()):
-            scalar_value = self.point_color_scalars.GetValue(i)
-            r = (scalar_value // (256*256)) % 256
-            g = (scalar_value // 256) % 256
-            b = scalar_value % 256
-            color_array.InsertNextTuple3(r, g, b)
-        point_polydata.GetPointData().AddArray(color_array)
- 
-        ply_writer = self.vtk.vtkPLYWriter()
-        ply_writer.SetFileName(full_path + ".ply")
-        ply_writer.SetInputData(point_polydata)
-        ply_writer.SetArrayName("Point_Colors")
-        ply_writer.SetColorModeToDefault()
-        ply_writer.Write()

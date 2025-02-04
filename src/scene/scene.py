@@ -29,7 +29,7 @@ class Scene:
         self.elements = list()
         self.ray_debugger = NullRayDebugger()
 
-    def attach_ray_debugger(self, path="./results", filename="debug_ray_trace", display_3d_plot=False):
+    def attach_ray_debugger(self, path="./results", filename="debug_ray_trace", display_3d_plot=True):
         self.ray_debugger = ConcreteRayDebugger()
 
         def plot_ray_trace_wrap_user_args():
@@ -100,9 +100,9 @@ class Scene:
             self.detector_pixels: Vector = self.compute_ray_directions(detector_pointing_direction, detector_screen)
 
             # debug ray plotting: detector
-            self.ray_debugger.add_point(self.detector_pos, color=(0,255,0)) # R
-            # detector_dir_translate = self.detector_pos + detector_pointing_direction
-            # self.ray_debugger.add_vector(start_point=self.detector_pos, end_point=detector_dir_translate, color=(255,0,0)) # B
+            self.ray_debugger.add_point(self.detector_pos, color=(0,255,0))
+            detector_dir_translate = self.detector_pos + detector_pointing_direction
+            self.ray_debugger.add_vector(start_point=self.detector_pos, end_point=detector_dir_translate, color=(255,0,0))         
             self.ray_debugger.add_point(end_point=self.detector_pixels, color=(0,0,255))
 
         if origin is None:

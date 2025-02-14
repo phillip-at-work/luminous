@@ -1,5 +1,6 @@
 from functools import reduce
 import numpy as np
+from numpy.typing import NDArray
 from abc import ABC
 from PIL import Image
 import time
@@ -28,6 +29,7 @@ class Scene:
         setup_logging(name='luminous', level=log_level, log_file=log_file)
         self.elements = list()
         self.ray_debugger = NullRayDebugger()
+        self.compute_color_data = True # implement as boolean or null pattern
 
     def attach_ray_debugger(self, path="./results", filename="debug_ray_trace", display_3d_plot=True):
         self.ray_debugger = ConcreteRayDebugger()
@@ -66,7 +68,8 @@ class Scene:
         h_col = np.linspace(screen[1], screen[3], h)
         rows = np.tile(w_row, h)
         columns = np.repeat(h_col, w)
-        return Vector(rows, columns, 0)
+        d = np.zeros(len(rows))
+        return Vector(rows, columns, d)
 
     def __iadd__(self, obj):
         if isinstance(obj, Element):
@@ -82,67 +85,91 @@ class Scene:
 
         return self
         
-    def raytrace(self, origin=None, direction=None, elements=None, bounce=0, init=True):
+    def raytrace(self):
 
-        if init:
-            self.start_time = time.perf_counter()
+        self.start_time = time.perf_counter()
 
-            self.detector_width: float = self.detector.width
-            self.detector_height: float = self.detector.height
-            self.detector_pos: Vector = self.detector.position
-            detector_pointing_direction: Vector = self.detector.pointing_direction
+        self.detector_width: float = self.detector.width
+        self.detector_height: float = self.detector.height
+        self.detector_pos: Vector = self.detector.position
+        detector_pointing_direction: Vector = self.detector.pointing_direction
 
-            self.source_pos: Vector = self.source.position
-            # TODO source should also have pointing direction, like detector. for an isotropic source, use arbitrary default.
-            source_pointing_direction: Vector = self.source.pointing_direction
+        self.source_pos: Vector = self.source.position
+        # TODO source should also have pointing direction, like detector. for an isotropic source, use arbitrary default.
+        source_pointing_direction: Vector = self.source.pointing_direction
 
-            detector_screen: Vector = self.create_screen_coord(self.detector.width, self.detector.height)
-            self.detector_pixels: Vector = self.compute_ray_directions(detector_pointing_direction, detector_screen)
+        detector_screen: Vector = self.create_screen_coord(self.detector.width, self.detector.height)
+        self.detector_pixels: Vector = self.compute_ray_directions(detector_pointing_direction, detector_screen)
 
-            # debug ray plotting: detector
-            self.ray_debugger.add_point(self.detector_pos, color=(0,255,0))
-            detector_dir_translate = self.detector_pos + detector_pointing_direction
-            self.ray_debugger.add_vector(start_point=self.detector_pos, end_point=detector_dir_translate, color=(255,0,0))         
-            self.ray_debugger.add_point(end_point=self.detector_pixels, color=(0,0,255))
+        # debug ray plotting: detector
+        self.ray_debugger.add_point(self.detector_pos, color=(0,255,0))
+        detector_dir_translate = self.detector_pos + detector_pointing_direction
+        self.ray_debugger.add_vector(start_point=self.detector_pos, end_point=detector_dir_translate, color=(255,0,0))
 
-        if origin is None:
-            origin = self.detector_pos
-        if direction is None:
-            direction = self.detector_pixels
-        if elements is None:
-            elements = self.elements
+        return self._recursive_trace(origin=self.detector_pos, direction=self.detector_pixels, elements=self.elements, bounce=0)
 
-        distances = [s.intersect(origin, direction) for s in elements]
-        nearest = reduce(np.minimum, distances)
+    def _recursive_trace(self, origin: Vector, direction: Vector, elements: list['Element'], bounce: int):
+
+        ''' 
+        distances between origin and element surface, along direction vector
+        length of outer list == number of elements in scene for which intersections exist
+        length of inner np.ndarrays == number of detector pixels (rays)
+        '''
+        distances: list[np.ndarray] = [s.intersect(origin, direction) for s in elements]
+
+        '''
+        Find element-wise minimum for each detector pixel (ray)
+        e.g., identify which element, if any, is hit first
+        '''
+        nearest: np.ndarray = reduce(np.minimum, distances)
+
         rays = Vector(0, 0, 0)
-        for s, d in zip(elements, distances):
-            hit = (nearest != FARAWAY) & (d == nearest)
+        for element, distance in zip(elements, distances):
+
+            hit: NDArray[np.bool_] = (nearest != FARAWAY) & (distance == nearest)
+
             if np.any(hit):
-                dc = extract(hit, d)
+                # TODO rename and identify how this block works
+                dc = extract(hit, distance)
                 Oc = origin.extract(hit)
                 Dc = direction.extract(hit)
-                cc = s.light(
-                    self.source_pos,
-                    self.detector_pos,
-                    Oc,
-                    Dc,
-                    dc,
-                    elements,
-                    self,
-                    bounce,
-                )
-                rays += cc.place(hit)
+                M, N = element.new_ray_direction(Oc, Dc, dc)
+
+                if self.compute_color_data:
+                    to_source = (self.source_pos - M).norm()  # direction to light
+                    to_origin = (self.detector_pos - M).norm()  # direction to ray origin
+                    nudged = M + N * 0.0001  # M nudged to avoid itself
+
+                    # Shadow: find if the point is shadowed or not.
+                    # This amounts to finding out if M can see the light
+                    light_distances = [s.intersect(nudged, to_source) for s in elements]
+                    light_nearest = reduce(np.minimum, light_distances)
+                    seelight = light_distances[elements.index(element)] == light_nearest # TODO elements.index?
+
+                    # Ambient
+                    color = Vector(0.05, 0.05, 0.05) # TODO this should be a scene property or element property? what about for moving objects?
+
+                    # Lambert shading (diffuse)
+                    lv = np.maximum(N.dot(to_source), 0)
+                    color += element.diffuse_color(M) * lv * seelight
+
+                    # Reflection
+                    if bounce < 2:
+                        rayD = (Dc - N * 2 * Dc.dot(N)).norm()
+                        color += self._recursive_trace(nudged, rayD, elements, bounce + 1) * element.reflectance
+
+                    # Blinn-Phong shading (specular)
+                    phong = N.dot((to_source + to_origin).norm())
+                    color += Vector(1, 1, 1) * np.power(np.clip(phong, 0, 1), 50) * seelight
+
+                rays += color.place(hit)
+
         return rays
 
     def resolve_rays(self, rays):
         rgb = [
             Image.fromarray(
-                (
-                    255
-                    * np.clip(c, 0, 1).reshape(
-                        (self.detector_height, self.detector_width)
-                    )
-                ).astype(np.uint8),
+                (255 * np.clip(c, 0, 1).reshape((self.detector_height, self.detector_width))).astype(np.uint8),
                 "L",
             )
             for c in rays.components()
@@ -198,46 +225,10 @@ class Sphere(Element):
     def diffuse_color(self, M):
         return self.color
 
-    def light(  # TODO rename
-        self,
-        source: Vector,
-        detector: Vector,
-        origin: Vector,
-        D: Vector,
-        d: Vector,
-        elements: list[Element],
-        scene: Scene,
-        bounce: int,
-    ):
+    def new_ray_direction(self, origin: Vector, D: Vector, d: Vector):
         M = origin + D * d  # intersection point
         N = (M - self.center) * (1.0 / self.radius)  # normal
-        to_source = (source - M).norm()  # direction to light
-        to_origin = (detector - M).norm()  # direction to ray origin
-        nudged = M + N * 0.0001  # M nudged to avoid itself
-
-        # Shadow: find if the point is shadowed or not.
-        # This amounts to finding out if M can see the light
-        light_distances = [s.intersect(nudged, to_source) for s in elements]
-        light_nearest = reduce(np.minimum, light_distances)
-        seelight = light_distances[elements.index(self)] == light_nearest
-
-        # Ambient
-        color = Vector(0.05, 0.05, 0.05)
-
-        # Lambert shading (diffuse)
-        lv = np.maximum(N.dot(to_source), 0)
-        color += self.diffuse_color(M) * lv * seelight
-
-        # Reflection
-        if bounce < 2:
-            rayD = (D - N * 2 * D.dot(N)).norm()
-            color += scene.raytrace(nudged, rayD, elements, bounce + 1, init=False) * self.reflectance
-
-        # Blinn-Phong shading (specular)
-        phong = N.dot((to_source + to_origin).norm())
-        color += Vector(1, 1, 1) * np.power(np.clip(phong, 0, 1), 50) * seelight
-        return color
-
+        return M, N
 
 class CheckeredSphere(Sphere):
     def diffuse_color(self, M):

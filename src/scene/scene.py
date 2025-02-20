@@ -38,26 +38,23 @@ class Scene:
             self.ray_debugger.plot(path=path, filename=filename, display_3d_plot=display_3d_plot)
         atexit.register(plot_ray_trace_wrap_user_args)
 
-    def compute_ray_directions(self, camera_normal: Vector, detector_screen):
-        up = Vector(0, 1, 0) # TODO (0,0,1)?
-        right = camera_normal.cross(up, normalize=False)
-        initial_ray_dir = (detector_screen - self.detector_pos).norm()
-        
-        right_components = right.components()
-        up_components = up.components()
-        normal_components = camera_normal.components()
-        
-        original_vectors = np.stack((initial_ray_dir.x, initial_ray_dir.y, initial_ray_dir.z), axis=-1)
-        rotated_vectors = np.dot(original_vectors, [right_components, up_components, normal_components])
-        ray_dir_x, ray_dir_y, ray_dir_z = rotated_vectors.T.astype(np.float64)
-        
-        return Vector(ray_dir_x, ray_dir_y, ray_dir_z)
-        
-    def create_screen_coord(self, w, h, vertical_screen_shift=0, horizontal_screen_shift=0) -> Vector:
+    def compute_ray_directions(self, detector_pointing_direction: Vector, detector_screen: Vector):
+
+        initial_ray_dir = (detector_screen - self.detector_pos)
+
+        ray_dir_x = initial_ray_dir.x
+        ray_dir_y = initial_ray_dir.y
+        ray_dir_z = initial_ray_dir.z + detector_pointing_direction.z
+
+        ray_dir = Vector(ray_dir_x, ray_dir_y, ray_dir_z).norm()
+
+        return ray_dir
+
+    def create_screen_coord(self, w, h, detector_pointing_direction, detector_pos, vertical_screen_shift=0, horizontal_screen_shift=0, rotation=0) -> Vector:
         '''
         Create and return a Vector where each nth component of the vector represents one unique pixel in the detection screen;
         where the larger detector axis is normalized to +/- 1 and the smaller axis is scaled to aspect ratio.
-        The detector screen surface is necessarily centered on 0 (x-y plane) by default.
+        The detector screen surface is necessarily centered on detector_pos and normal to detector_pointing_direction.
         '''
         aspect_ratio = w / h
         screen = (  -1 + horizontal_screen_shift, 
@@ -69,7 +66,37 @@ class Scene:
         rows = np.tile(w_row, h)
         columns = np.repeat(h_col, w)
         d = np.zeros(len(rows))
-        return Vector(rows, columns, d)
+
+        screen_coords = Vector(rows, columns, d)
+
+        if rotation != 0:
+            rotation_matrix = self._rotation_matrix(detector_pointing_direction, rotation)
+            screen_coords = self._apply_rotation(screen_coords, rotation_matrix)
+
+        screen_coords = screen_coords + detector_pos
+        return screen_coords
+
+    def _rotation_matrix(self, axis, theta):
+        """
+        Return the rotation matrix associated with counterclockwise rotation about
+        the given axis by theta radians.
+        """
+        axis = axis.norm()
+        a = np.cos(theta / 2.0)
+        b, c, d = -axis.x * np.sin(theta / 2.0), -axis.y * np.sin(theta / 2.0), -axis.z * np.sin(theta / 2.0)
+        aa, bb, cc, dd = a * a, b * b, c * c, d * d
+        bc, ad, ac, ab, bd, cd = b * c, a * d, a * c, a * b, b * d, c * d
+        return np.array([[aa + bb - cc - dd, 2 * (bc + ad), 2 * (bd - ac)],
+                        [2 * (bc - ad), aa + cc - bb - dd, 2 * (cd + ab)],
+                        [2 * (bd + ac), 2 * (cd - ab), aa + dd - bb - cc]])
+
+    def _apply_rotation(self, vector, rotation_matrix):
+        """
+        Apply the rotation matrix to the vector.
+        """
+        original_vectors = np.stack((vector.x, vector.y, vector.z), axis=-1)
+        rotated_vectors = np.dot(original_vectors, rotation_matrix.T)
+        return Vector(rotated_vectors[:, 0], rotated_vectors[:, 1], rotated_vectors[:, 2])
 
     def __iadd__(self, obj):
         if isinstance(obj, Element):
@@ -86,25 +113,22 @@ class Scene:
         return self
         
     def raytrace(self):
-
         self.start_time = time.perf_counter()
 
-        self.detector_width: float = self.detector.width
-        self.detector_height: float = self.detector.height
-        self.detector_pos: Vector = self.detector.position
-        detector_pointing_direction: Vector = self.detector.pointing_direction
+        self.detector_width = self.detector.width
+        self.detector_height = self.detector.height
+        self.detector_pos = self.detector.position
+        detector_pointing_direction = self.detector.pointing_direction
 
-        self.source_pos: Vector = self.source.position
-        # TODO source should also have pointing direction, like detector. for an isotropic source, use arbitrary default.
-        source_pointing_direction: Vector = self.source.pointing_direction
+        self.source_pos = self.source.position
 
-        detector_screen: Vector = self.create_screen_coord(self.detector.width, self.detector.height)
-        self.detector_pixels: Vector = self.compute_ray_directions(detector_pointing_direction, detector_screen)
+        detector_screen = self.create_screen_coord(self.detector.width, self.detector.height, detector_pointing_direction, self.detector_pos)
+        self.detector_pixels = self.compute_ray_directions(detector_pointing_direction, detector_screen)
 
-        # debug ray plotting: detector
-        self.ray_debugger.add_point(self.detector_pos, color=(0,255,0))
+        self.ray_debugger.add_point(self.detector_pos, color=(0, 255, 0))
         detector_dir_translate = self.detector_pos + detector_pointing_direction
-        self.ray_debugger.add_vector(start_point=self.detector_pos, end_point=detector_dir_translate, color=(255,0,0))
+        self.ray_debugger.add_vector(start_point=self.detector_pos, end_point=detector_dir_translate, color=(255, 0, 0))
+        self.ray_debugger.add_point(detector_screen, color=(255,0,0))
 
         return self._recursive_trace(origin=self.detector_pos, direction=self.detector_pixels, elements=self.elements, bounce=0)
 

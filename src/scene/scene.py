@@ -5,6 +5,7 @@ from abc import ABC
 from PIL import Image
 import time
 import atexit
+from typing import Tuple
 
 from ..math.vector import Vector
 from ..math.tools import extract
@@ -135,55 +136,65 @@ class Scene:
     def _recursive_trace(self, origin: Vector, direction: Vector, elements: list['Element'], bounce: int):
 
         ''' 
-        distances between origin and element surface, along direction vector
-        length of outer list == number of elements in scene for which intersections exist
-        length of inner np.ndarrays == number of detector pixels (rays)
+        distances between origin and element surface, along `direction` vector
+        len(distances) = number of elements in scene
+        len(distances)[n] = number of rays (detector pixels)
         '''
-        distances: list[np.ndarray] = [s.intersect(origin, direction) for s in elements]
+        distances: list[NDArray[np.float64]] = [s.intersect(origin, direction) for s in elements]
 
         '''
         Find element-wise minimum for each detector pixel (ray)
-        e.g., identify which element, if any, is hit first
+        e.g., one ray may intersect two elements. if so, count nearest hit as the true hit.
+        len(nearest) == numer of rays (detector pixels), where each value is the smallest distance from each sub-list of `distances`
         '''
-        nearest: np.ndarray = reduce(np.minimum, distances)
+        nearest: NDArray[np.float64] = reduce(np.minimum, distances)
 
         rays = Vector(0, 0, 0)
         for element, distance in zip(elements, distances):
 
+            '''
+            len(hit) == len(nearest)
+            for each boolean in this array:
+            if `nearest != FARAWAY`, and, for the `distance` in `distances`, if that `distance` is `nearest[n]`, then this ray intersects this `element`
+            '''
             hit: NDArray[np.bool_] = (nearest != FARAWAY) & (distance == nearest)
 
             if np.any(hit):
-                # TODO rename and identify how this block works
-                dc = extract(hit, distance)
-                Oc = origin.extract(hit)
-                Dc = direction.extract(hit)
-                M, N = element.new_ray_direction(Oc, Dc, dc)
+
+                ray_travel_distance = extract(hit, distance)
+                ray_start_position = origin.extract(hit)
+                ray_pointing_direction = direction.extract(hit)
+
+                intersection_point: Vector
+                surface_normal_at_intersection: Vector
+                intersection_point, surface_normal_at_intersection = element.new_ray_direction(ray_start_position, ray_pointing_direction, ray_travel_distance)
+
+                to_source = (self.source_pos - intersection_point).norm()  # direction to light
+                to_origin = (self.detector_pos - intersection_point).norm()  # direction to ray origin
+
+                nudged = intersection_point + surface_normal_at_intersection * 0.0001  # M nudged to avoid itself
+
+                # Shadow: find if the point is shadowed or not.
+                # This amounts to finding out if M can see the light
+                light_distances = [s.intersect(nudged, to_source) for s in elements]
+                light_nearest = reduce(np.minimum, light_distances)
+                seelight = light_distances[elements.index(element)] == light_nearest # TODO elements.index?
 
                 if self.compute_color_data:
-                    to_source = (self.source_pos - M).norm()  # direction to light
-                    to_origin = (self.detector_pos - M).norm()  # direction to ray origin
-                    nudged = M + N * 0.0001  # M nudged to avoid itself
-
-                    # Shadow: find if the point is shadowed or not.
-                    # This amounts to finding out if M can see the light
-                    light_distances = [s.intersect(nudged, to_source) for s in elements]
-                    light_nearest = reduce(np.minimum, light_distances)
-                    seelight = light_distances[elements.index(element)] == light_nearest # TODO elements.index?
-
                     # Ambient
                     color = Vector(0.05, 0.05, 0.05) # TODO this should be a scene property or element property? what about for moving objects?
 
                     # Lambert shading (diffuse)
-                    lv = np.maximum(N.dot(to_source), 0)
-                    color += element.diffuse_color(M) * lv * seelight
+                    lv = np.maximum(surface_normal_at_intersection.dot(to_source), 0)
+                    color += element.diffuse_color(intersection_point) * lv * seelight
 
                     # Reflection
                     if bounce < 2:
-                        rayD = (Dc - N * 2 * Dc.dot(N)).norm()
+                        rayD = (ray_pointing_direction - surface_normal_at_intersection * 2 * ray_pointing_direction.dot(surface_normal_at_intersection)).norm()
                         color += self._recursive_trace(nudged, rayD, elements, bounce + 1) * element.reflectance
 
                     # Blinn-Phong shading (specular)
-                    phong = N.dot((to_source + to_origin).norm())
+                    phong = surface_normal_at_intersection.dot((to_source + to_origin).norm())
                     color += Vector(1, 1, 1) * np.power(np.clip(phong, 0, 1), 50) * seelight
 
                 rays += color.place(hit)
@@ -211,6 +222,7 @@ class Scene:
 
 
 class Element(ABC):
+    # TODO create and document abstract methods
     pass
 
 
@@ -249,10 +261,14 @@ class Sphere(Element):
     def diffuse_color(self, M):
         return self.color
 
-    def new_ray_direction(self, origin: Vector, D: Vector, d: Vector):
-        M = origin + D * d  # intersection point
-        N = (M - self.center) * (1.0 / self.radius)  # normal
-        return M, N
+    def new_ray_direction(self, 
+                          incident_ray_start_position: Vector, 
+                          incident_ray_pointing_direction: Vector, 
+                          incident_ray_travel_distance: Vector) -> Tuple[Vector, Vector]:
+        
+        intersection_point = incident_ray_start_position + incident_ray_pointing_direction * incident_ray_travel_distance
+        normal_at_intersection = (intersection_point - self.center) * (1.0 / self.radius)
+        return intersection_point, normal_at_intersection
 
 class CheckeredSphere(Sphere):
     def diffuse_color(self, M):

@@ -4,6 +4,8 @@ import math
 import numpy as np
 import datetime
 import abc
+import numbers
+import inspect
 
 class RayDebugger(abc.ABC):
     @abc.abstractmethod
@@ -72,38 +74,50 @@ class ConcreteRayDebugger(RayDebugger):
 
         self.luminous_dialog_title = "luminous ray debugger"
  
-    def add_point(self, end_point, color=(0,0,0)):
+    def add_point(self, p, color=(0,0,0)):
  
         color_scalar = color[0] * 256 * 256 + color[1] * 256 + color[2]
- 
-        if isinstance(end_point, Vector):
-            end_point = end_point.components()
- 
-        try:
-            for x_end, y_end, z_end in zip(*end_point):
+
+        if isinstance(p, Vector):
+            p = p.components()
+
+        if all(isinstance(item, numbers.Number) for item in p):
+            self.points.InsertNextPoint(p)
+            self.point_color_scalars.InsertNextValue(color_scalar)
+            return
+        
+        if all(isinstance(item, np.ndarray) for item in p):
+            for x_end, y_end, z_end in zip(*p):
                 end = (x_end, y_end, z_end)
                 self.points.InsertNextPoint(end)
                 self.point_color_scalars.InsertNextValue(color_scalar)
- 
-        except TypeError:
-            self.points.InsertNextPoint(end_point)
-            self.point_color_scalars.InsertNextValue(color_scalar)
+            return
+
+        m = inspect.currentframe().f_code.co_name
+        raise TypeError(f"Unknown data structure inside call: {self.__class__.__name__}.{m}")
  
     def add_vector(self, start_point, end_point, color=(0,0,0)):
 
         color_scalar = color[0] * 256 * 256 + color[1] * 256 + color[2]
 
-        try:
-            for (s_x, s_y, s_z), (e_x, e_y, e_z) in zip(start_point, end_point):
-                self._insert_vector((s_x, s_y, s_z), (e_x, e_y, e_z), color_scalar)
-        except TypeError:
-            self._insert_vector(start_point, end_point, color_scalar)
-
-    def _insert_vector(self, start_point, end_point, color_scalar):
         if isinstance(end_point, Vector):
             end_point = end_point.components()
         if isinstance(start_point, Vector):
             start_point = start_point.components()
+
+        if all(isinstance(item, numbers.Number) for item in start_point) and all(isinstance(item, numbers.Number) for item in end_point):
+            self._insert_vector(start_point, end_point, color_scalar)
+            return
+        
+        if all(isinstance(item, np.ndarray) for item in start_point) and all(isinstance(item, np.ndarray) for item in end_point):
+            for start_x, start_y, start_z, end_x, end_y, end_z in zip(start_point[0], start_point[1], start_point[2], end_point[0], end_point[1], end_point[2]):
+                self._insert_vector((start_x, start_y, start_z), (end_x, end_y, end_z), color_scalar)
+            return
+        
+        m = inspect.currentframe().f_code.co_name
+        raise TypeError(f"Unknown data structure inside call: {self.__class__.__name__}.{m}")
+
+    def _insert_vector(self, start_point, end_point, color_scalar):
 
         vector = [e - s for e, s in zip(end_point, start_point)]
         vector_magnitude = math.sqrt(sum(v ** 2 for v in vector))

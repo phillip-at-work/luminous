@@ -123,29 +123,29 @@ class Scene:
 
         self.source_pos = self.source.position
 
-        detector_screen = self.create_screen_coord(self.detector.width, self.detector.height, detector_pointing_direction, self.detector_pos)
-        self.detector_pixels = self.compute_ray_directions(detector_pointing_direction, detector_screen)
+        detector_pixels = self.create_screen_coord(self.detector.width, self.detector.height, detector_pointing_direction, self.detector_pos)
+        self.pixel_incident_rays = self.compute_ray_directions(detector_pointing_direction, detector_pixels)
 
         self.ray_debugger.add_point(self.detector_pos, color=(0, 255, 0))
         detector_dir_translate = self.detector_pos + detector_pointing_direction
         self.ray_debugger.add_vector(start_point=self.detector_pos, end_point=detector_dir_translate, color=(255, 0, 0))
-        self.ray_debugger.add_point(detector_screen, color=(255,0,0))
+        self.ray_debugger.add_point(detector_pixels, color=(255,0,0))
 
-        return self._recursive_trace(origin=self.detector_pos, direction=self.detector_pixels, elements=self.elements, bounce=0)
+        return self._recursive_trace(origin=detector_pixels, direction=self.pixel_incident_rays, elements=self.elements, bounce=0)
 
     def _recursive_trace(self, origin: Vector, direction: Vector, elements: list['Element'], bounce: int):
 
         ''' 
         distances between origin and element surface, along `direction` vector
         len(distances) = number of elements in scene
-        len(distances)[n] = number of rays (detector pixels)
+        len(distances)[n] = number of rays
         '''
         distances: list[NDArray[np.float64]] = [s.intersect(origin, direction) for s in elements]
 
         '''
         Find element-wise minimum for each detector pixel (ray)
         e.g., one ray may intersect two elements. if so, count nearest hit as the true hit.
-        len(nearest) == numer of rays (detector pixels), where each value is the smallest distance from each sub-list of `distances`
+        len(nearest) == numer of rays, where each value is the smallest distance from each sub-list of `distances`
         '''
         nearest: NDArray[np.float64] = reduce(np.minimum, distances)
 
@@ -165,10 +165,13 @@ class Scene:
                 ray_start_position = origin.extract(hit)
                 ray_pointing_direction = direction.extract(hit)
 
-                intersection_point: Vector
-                surface_normal_at_intersection: Vector
-                intersection_point, surface_normal_at_intersection = element.new_ray_direction(ray_start_position, ray_pointing_direction, ray_travel_distance)
+                intersection_point: Vector = ray_start_position + ray_pointing_direction * ray_travel_distance
 
+                self.ray_debugger.add_vector(start_point=ray_start_position, end_point=intersection_point, color=(0,0,255))
+
+                surface_normal_at_intersection: Vector = element.compute_intersection_geometry(intersection_point)
+
+                # TODO at least some of this is unique to the color model
                 to_source = (self.source_pos - intersection_point).norm()  # direction to light
                 to_origin = (self.detector_pos - intersection_point).norm()  # direction to ray origin
 
@@ -261,14 +264,9 @@ class Sphere(Element):
     def diffuse_color(self, M):
         return self.color
 
-    def new_ray_direction(self, 
-                          incident_ray_start_position: Vector, 
-                          incident_ray_pointing_direction: Vector, 
-                          incident_ray_travel_distance: Vector) -> Tuple[Vector, Vector]:
-        
-        intersection_point = incident_ray_start_position + incident_ray_pointing_direction * incident_ray_travel_distance
+    def compute_intersection_geometry(self, intersection_point: Vector) -> Vector:
         normal_at_intersection = (intersection_point - self.center) * (1.0 / self.radius)
-        return intersection_point, normal_at_intersection
+        return normal_at_intersection
 
 class CheckeredSphere(Sphere):
     def diffuse_color(self, M):

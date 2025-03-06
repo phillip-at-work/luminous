@@ -4,11 +4,14 @@ from ..math.vector import Vector
 
 
 class Detector(ABC):
-    pass
+    @abstractmethod
+    def capture_data(self):
+        pass
 
 
 class PowerMeter(Detector):
-    pass
+    def capture_data(self):
+        raise NotImplementedError(f"Method not yet implementated in {self.__class__}")
 
 
 class Imager(Detector):
@@ -24,3 +27,6 @@ class Imager(Detector):
         self.width = width
         self.height = height
         self.pointing_direction = pointing_direction.norm()
+
+    def capture_data(self):
+        pass

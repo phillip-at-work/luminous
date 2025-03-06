@@ -124,14 +124,14 @@ class Scene:
         self.source_pos = self.source.position
 
         detector_pixels = self.create_screen_coord(self.detector.width, self.detector.height, detector_pointing_direction, self.detector_pos)
-        self.pixel_incident_rays = self.compute_ray_directions(detector_pointing_direction, detector_pixels)
+        pixel_incident_rays = self.compute_ray_directions(detector_pointing_direction, detector_pixels)
 
         self.ray_debugger.add_point(self.detector_pos, color=(0, 255, 0))
         detector_dir_translate = self.detector_pos + detector_pointing_direction
         self.ray_debugger.add_vector(start_point=self.detector_pos, end_point=detector_dir_translate, color=(255, 0, 0))
         self.ray_debugger.add_point(detector_pixels, color=(255,0,0))
 
-        return self._recursive_trace(origin=detector_pixels, direction=self.pixel_incident_rays, elements=self.elements, bounce=0)
+        return self._recursive_trace(origin=detector_pixels, direction=pixel_incident_rays, elements=self.elements, bounce=0)
 
     def _recursive_trace(self, origin: Vector, direction: Vector, elements: list['Element'], bounce: int):
 
@@ -143,21 +143,21 @@ class Scene:
         distances: list[NDArray[np.float64]] = [s.intersect(origin, direction) for s in elements]
 
         '''
-        Find element-wise minimum for each detector pixel (ray)
+        Find element-wise minimum for rays
         e.g., one ray may intersect two elements. if so, count nearest hit as the true hit.
-        len(nearest) == numer of rays, where each value is the smallest distance from each sub-list of `distances`
+        len(minimum_distances) == numer of rays, where each value is the smallest distance from each sub-list of `distances`
         '''
-        nearest: NDArray[np.float64] = reduce(np.minimum, distances)
+        minimum_distances: NDArray[np.float64] = reduce(np.minimum, distances)
 
         rays = Vector(0, 0, 0)
         for element, distance in zip(elements, distances):
 
             '''
-            len(hit) == len(nearest)
+            len(hit) == len(minimum_distances)
             for each boolean in this array:
-            if `nearest != FARAWAY`, and, for the `distance` in `distances`, if that `distance` is `nearest[n]`, then this ray intersects this `element`
+            if `minimum_distances != FARAWAY`, and, for the `distance` in `distances`, if that `distance` is `minimum_distances[n]`, then this ray intersects this `element`
             '''
-            hit: NDArray[np.bool_] = (nearest != FARAWAY) & (distance == nearest)
+            hit: NDArray[np.bool_] = (minimum_distances != FARAWAY) & (distance == minimum_distances)
 
             if np.any(hit):
 
@@ -171,34 +171,39 @@ class Scene:
 
                 surface_normal_at_intersection: Vector = element.compute_intersection_geometry(intersection_point)
 
-                # TODO at least some of this is unique to the color model
-                to_source = (self.source_pos - intersection_point).norm()  # direction to light
-                to_origin = (self.detector_pos - intersection_point).norm()  # direction to ray origin
+                intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * 0.0001
 
-                nudged = intersection_point + surface_normal_at_intersection * 0.0001  # M nudged to avoid itself
+                direction_to_source = self.source_pos - intersection_point
+                direction_to_source_unit: Vector = direction_to_source.norm()
+                direction_to_origin_unit: Vector = (self.detector_pos - intersection_point).norm()
+                distances_with_standoff: list[NDArray[np.float64]] = [s.intersect(intersection_point_with_standoff, direction_to_source_unit) for s in elements]
+                minimum_distances_with_standoff = reduce(np.minimum, distances_with_standoff)
 
-                # Shadow: find if the point is shadowed or not.
-                # This amounts to finding out if M can see the light
-                light_distances = [s.intersect(nudged, to_source) for s in elements]
-                light_nearest = reduce(np.minimum, light_distances)
-                seelight = light_distances[elements.index(element)] == light_nearest # TODO elements.index?
+                intersection_point_illuminated: NDArray[np.bool_] = distances_with_standoff[elements.index(element)] == minimum_distances_with_standoff
+                
+                illuminated_intersections = intersection_point.extract(intersection_point_illuminated)
+                direction_to_source_minima = direction_to_source.extract(intersection_point_illuminated)
+                intersection_to_source = illuminated_intersections + direction_to_source_minima
+
+                self.ray_debugger.add_vector(start_point=illuminated_intersections, end_point=intersection_to_source, color=(255,0,255))
 
                 if self.compute_color_data:
+                    
                     # Ambient
                     color = Vector(0.05, 0.05, 0.05) # TODO this should be a scene property or element property? what about for moving objects?
 
                     # Lambert shading (diffuse)
-                    lv = np.maximum(surface_normal_at_intersection.dot(to_source), 0)
-                    color += element.diffuse_color(intersection_point) * lv * seelight
+                    lv = np.maximum(surface_normal_at_intersection.dot(direction_to_source_unit), 0)
+                    color += element.diffuse_color(intersection_point) * lv * intersection_point_illuminated
 
                     # Reflection
                     if bounce < 2:
                         rayD = (ray_pointing_direction - surface_normal_at_intersection * 2 * ray_pointing_direction.dot(surface_normal_at_intersection)).norm()
-                        color += self._recursive_trace(nudged, rayD, elements, bounce + 1) * element.reflectance
+                        color += self._recursive_trace(intersection_point_with_standoff, rayD, elements, bounce + 1) * element.reflectance
 
                     # Blinn-Phong shading (specular)
-                    phong = surface_normal_at_intersection.dot((to_source + to_origin).norm())
-                    color += Vector(1, 1, 1) * np.power(np.clip(phong, 0, 1), 50) * seelight
+                    phong = surface_normal_at_intersection.dot((direction_to_source_unit + direction_to_origin_unit).norm())
+                    color += Vector(1, 1, 1) * np.power(np.clip(phong, 0, 1), 50) * intersection_point_illuminated
 
                 rays += color.place(hit)
 

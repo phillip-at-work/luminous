@@ -8,9 +8,16 @@ class Detector(ABC):
     def capture_data(self):
         pass
 
+    @abstractmethod
+    def view_data(self):
+        pass
+
 
 class PowerMeter(Detector):
     def capture_data(self):
+        raise NotImplementedError(f"Method not yet implementated in {self.__class__}")
+    
+    def view_data(self):
         raise NotImplementedError(f"Method not yet implementated in {self.__class__}")
 
 
@@ -19,9 +26,9 @@ class Imager(Detector):
         '''
         Parameters:
             position (Vector): Detector's absolute position in 3D space
-            width (float): Detector surface width
-            height (float): Detector surface height
-            pointing_direction (Vector): a noral vector defining Detector's pointing direction
+            width (float): Detector width in pixels
+            height (float): Detector height in pixels
+            pointing_direction (Vector): vector defining `Detector` pointing direction
         '''
         self.position = position
         self.width = width
@@ -29,4 +36,7 @@ class Imager(Detector):
         self.pointing_direction = pointing_direction.norm()
 
     def capture_data(self):
+        pass
+
+    def view_data(self):
         pass

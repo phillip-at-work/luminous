@@ -170,13 +170,13 @@ class Scene:
                 surface_normal_at_intersection: Vector = element.compute_intersection_geometry(intersection_point)
                 intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * 0.0001
 
-                direction_to_source: Vector = self.source_pos - intersection_point
+                direction_to_source: Vector = self.source_pos - intersection_point_with_standoff
                 direction_to_source_unit: Vector = direction_to_source.norm()
                 direction_to_origin_unit: Vector = (self.detector_pos - intersection_point).norm()
-                distances_with_standoff: list[NDArray[np.float64]] = [s.intersect(intersection_point_with_standoff, direction_to_source_unit) for s in elements]
-
-                minimum_distances_with_standoff: NDArray[np.float64] = reduce(np.minimum, distances_with_standoff)
-                intersection_point_illuminated: NDArray[np.bool_] = distances_with_standoff[elements.index(element)] == minimum_distances_with_standoff
+                intersections_blocking_source: list[NDArray[np.float64]] = [s.intersect(intersection_point_with_standoff, direction_to_source_unit) for s in elements]
+                minimum_distances_with_standoff: NDArray[np.float64] = reduce(np.minimum, intersections_blocking_source)
+                distances_to_source = direction_to_source.magnitude()
+                intersection_point_illuminated: NDArray[np.bool_] = minimum_distances_with_standoff >= distances_to_source
                 
                 # ray debugger
                 self.ray_debugger.add_vector(start_point=ray_start_position, end_point=intersection_point_with_standoff, color=(0,0,255)) # to elements

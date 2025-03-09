@@ -29,6 +29,8 @@ class Scene:
     def __init__(self, log_level=20, log_file="luminous.log") -> None:
         setup_logging(name='luminous', level=log_level, log_file=log_file)
         self.elements = list()
+        self.detectors = list()
+        self.sources = list()
         self.ray_debugger = NullRayDebugger()
         self.compute_color_data = True # implement as boolean or null pattern
 
@@ -103,11 +105,9 @@ class Scene:
         if isinstance(obj, Element):
             self.elements.append(obj)
         elif isinstance(obj, Source):
-            # TODO if self.source is not None, warn a user that they're overwriting their Source
-            self.source = obj
+            self.sources.append(obj)
         elif isinstance(obj, Detector):
-            # TODO warn
-            self.detector = obj
+            self.detectors.append(obj)
         else:
             raise TypeError("Only Elements, Sources, and Detectors can be added to Scenes!")
 
@@ -115,6 +115,11 @@ class Scene:
         
     def raytrace(self):
         self.start_time = time.perf_counter()
+
+        # TODO
+        # future implementations will permit multiple sources and detectors. but currently does not. hard coded for 0th.
+        self.detector = self.detectors[0]
+        self.source = self.sources[0]
 
         self.detector_width: int = self.detector.width
         self.detector_height: int = self.detector.height
@@ -203,7 +208,7 @@ class Scene:
                     phong = surface_normal_at_intersection.dot((direction_to_source_unit + direction_to_origin_unit).norm())
                     color += Vector(1, 1, 1) * np.power(np.clip(phong, 0, 1), 50) * intersection_point_illuminated
 
-                rays += color.place(hit)
+                    rays += color.place(hit)
 
         return rays
 

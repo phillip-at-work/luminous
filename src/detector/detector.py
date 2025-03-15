@@ -60,9 +60,6 @@ class Camera(Detector):
         super().__init__(width, height, position, pointing_direction)
         self.data = Vector(0, 0, 0)
 
-    # def initialize_ray_sum(self):
-    #     self.rays = Vector(0, 0, 0)
-
     def _capture_data(self, surface_normal_at_intersection, direction_to_source_unit, element,intersection_point, intersection_point_illuminated):
         # Ambient
         color = Vector(0.05, 0.05, 0.05)

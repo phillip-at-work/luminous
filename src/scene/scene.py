@@ -32,7 +32,6 @@ class Scene:
         self.detectors = list()
         self.sources = list()
         self.ray_debugger = NullRayDebugger()
-        self.compute_color_data = True # implement as boolean or null pattern
 
     def attach_ray_debugger(self, path="./results", filename="debug_ray_trace", display_3d_plot=True):
         self.ray_debugger = ConcreteRayDebugger()
@@ -41,13 +40,13 @@ class Scene:
             self.ray_debugger.plot(path=path, filename=filename, display_3d_plot=display_3d_plot)
         atexit.register(plot_ray_trace_wrap_user_args)
 
-    def compute_ray_directions(self, detector_pointing_direction: Vector, detector_screen: Vector):
+    def compute_ray_directions(self, detector: Detector, detector_screen: Vector):
 
-        initial_ray_dir = (detector_screen - self.detector_pos)
+        initial_ray_dir = (detector_screen - detector.position)
 
         ray_dir_x = initial_ray_dir.x
         ray_dir_y = initial_ray_dir.y
-        ray_dir_z = initial_ray_dir.z + detector_pointing_direction.z
+        ray_dir_z = initial_ray_dir.z + detector.pointing_direction.z
 
         ray_dir = Vector(ray_dir_x, ray_dir_y, ray_dir_z).norm()
 
@@ -117,29 +116,25 @@ class Scene:
         self.start_time = time.perf_counter()
 
         # TODO
-        # future implementations will permit multiple sources and detectors. but currently does not. hard coded for 0th.
-        self.detector = self.detectors[0]
+        # future implementations will permit multiple sources. but currently does not. hard coded for 0th.
+        # self.detector = self.detectors[0]
         self.source = self.sources[0]
-
-        self.detector_width: int = self.detector.width
-        self.detector_height: int = self.detector.height
-        self.detector_pos: Vector = self.detector.position
-        detector_pointing_direction: Vector = self.detector.pointing_direction
-
         self.source_pos: Vector = self.source.position
 
-        detector_pixels: Vector = self.create_screen_coord(self.detector.width, self.detector.height, detector_pointing_direction, self.detector_pos)
-        pixel_incident_rays: Vector = self.compute_ray_directions(detector_pointing_direction, detector_pixels)
+        for detector in self.detectors:
 
-        # ray debugger
-        detector_dir_translate: Vector = self.detector_pos + detector_pointing_direction
-        self.ray_debugger.add_point(self.detector_pos, color=(0, 255, 0))
-        self.ray_debugger.add_vector(start_point=self.detector_pos, end_point=detector_dir_translate, color=(255, 0, 0))
-        self.ray_debugger.add_point(detector_pixels, color=(255,0,0))
+            detector_pixels: Vector = self.create_screen_coord(detector.width, detector.height, detector.pointing_direction, detector.position)
+            pixel_incident_rays: Vector = self.compute_ray_directions(detector, detector_pixels)
 
-        return self._recursive_trace(origin=detector_pixels, direction=pixel_incident_rays, elements=self.elements, bounce=0)
+            # ray debugger
+            detector_dir_translate: Vector = detector.position + detector.pointing_direction
+            self.ray_debugger.add_point(detector.position, color=(0, 255, 0))
+            self.ray_debugger.add_vector(start_point=detector.position, end_point=detector_dir_translate, color=(255, 0, 0))
+            self.ray_debugger.add_point(detector_pixels, color=(255,0,0))
 
-    def _recursive_trace(self, origin: Vector, direction: Vector, elements: list['Element'], bounce: int):
+            detector.data = self._recursive_trace(detector=detector, origin=detector_pixels, direction=pixel_incident_rays, elements=self.elements, bounce=0)
+
+    def _recursive_trace(self, detector: Detector, origin: Vector, direction: Vector, elements: list['Element'], bounce: int):
 
         ''' 
         distances between origin and element surface, along `direction` vector
@@ -156,6 +151,7 @@ class Scene:
         minimum_distances: NDArray[np.float64] = reduce(np.minimum, distances)
 
         rays = Vector(0, 0, 0)
+        
         for element, distance in zip(elements, distances):
 
             '''
@@ -177,7 +173,7 @@ class Scene:
 
                 direction_to_source: Vector = self.source_pos - intersection_point_with_standoff
                 direction_to_source_unit: Vector = direction_to_source.norm()
-                direction_to_origin_unit: Vector = (self.detector_pos - intersection_point).norm()
+                direction_to_origin_unit: Vector = (detector.position - intersection_point).norm()
                 intersections_blocking_source: list[NDArray[np.float64]] = [s.intersect(intersection_point_with_standoff, direction_to_source_unit) for s in elements]
                 minimum_distances_with_standoff: NDArray[np.float64] = reduce(np.minimum, intersections_blocking_source)
                 distances_to_source = direction_to_source.magnitude()
@@ -189,39 +185,20 @@ class Scene:
                 direction_to_source_minima: Vector = direction_to_source.extract(intersection_point_illuminated)
                 intersection_to_source: Vector = illuminated_intersections + direction_to_source_minima
                 self.ray_debugger.add_vector(start_point=illuminated_intersections, end_point=intersection_to_source, color=(255,0,255)) # to source
-
-                if self.compute_color_data:
                     
-                    # Ambient
-                    color = Vector(0.05, 0.05, 0.05) # TODO this should be a scene property or element property? what about for moving objects?
+                # detect
+                ray_data = detector._capture_data(surface_normal_at_intersection, direction_to_source_unit, element,intersection_point, intersection_point_illuminated) #element.diffuse_color(intersection_point) * lv * intersection_point_illuminated
 
-                    # Lambert shading (diffuse)
-                    lv = np.maximum(surface_normal_at_intersection.dot(direction_to_source_unit), 0)
-                    color += element.diffuse_color(intersection_point) * lv * intersection_point_illuminated
+                # reflect, recurse
+                if bounce < 2:
+                    new_ray_direction = (ray_pointing_direction - surface_normal_at_intersection * 2 * ray_pointing_direction.dot(surface_normal_at_intersection)).norm()
+                    ray_data += self._recursive_trace(detector, intersection_point_with_standoff, new_ray_direction, elements, bounce + 1) * element.reflectance
 
-                    # Reflection # TODO the number of reflections should itself be governed by a model that places a lower limit on ray (photon) power
-                    if bounce < 2:
-                        rayD = (ray_pointing_direction - surface_normal_at_intersection * 2 * ray_pointing_direction.dot(surface_normal_at_intersection)).norm()
-                        color += self._recursive_trace(intersection_point_with_standoff, rayD, elements, bounce + 1) * element.reflectance
+                ray_data += detector._calculate_model(surface_normal_at_intersection, direction_to_source_unit, direction_to_origin_unit, intersection_point_illuminated) #+= Vector(1, 1, 1) * np.power(np.clip(phong, 0, 1), 50) * intersection_point_illuminated
 
-                    # Blinn-Phong shading (specular)
-                    phong = surface_normal_at_intersection.dot((direction_to_source_unit + direction_to_origin_unit).norm())
-                    color += Vector(1, 1, 1) * np.power(np.clip(phong, 0, 1), 50) * intersection_point_illuminated
-
-                    rays += color.place(hit)
+                rays += ray_data.place(hit)
 
         return rays
-
-    def resolve_rays(self, rays):
-        rgb = [
-            Image.fromarray(
-                (255 * np.clip(c, 0, 1).reshape((self.detector_height, self.detector_width))).astype(np.uint8),
-                "L",
-            )
-            for c in rays.components()
-        ]
-
-        return Image.merge("RGB", rgb)
     
     def elaspsed_time(self):
         return time.perf_counter() - self.start_time

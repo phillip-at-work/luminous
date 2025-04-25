@@ -1,15 +1,13 @@
 from functools import reduce
 import numpy as np
 from numpy.typing import NDArray
-from abc import ABC
-from PIL import Image
 import time
 import atexit
-from typing import Tuple
 
 from ..math.vector import Vector
 from ..math.tools import extract
 from ..detector.detector import Detector
+from ..element.element import Element
 from ..source.source import Source
 from luminous.src.utilities.ray_debugger import NullRayDebugger, ConcreteRayDebugger
 
@@ -18,10 +16,6 @@ import logging
 logger = logging.getLogger('luminous.scene')
 
 FARAWAY = 1.0e39
-
-##
-## Scene
-##
 
 
 class Scene:
@@ -167,7 +161,7 @@ class Scene:
                 ray_pointing_direction: Vector = direction.extract(hit)
 
                 intersection_point: Vector = ray_start_position + ray_pointing_direction * ray_travel_distance
-                surface_normal_at_intersection: Vector = element.compute_intersection_geometry(intersection_point)
+                surface_normal_at_intersection: Vector = element.compute_intersection_normal(intersection_point)
                 intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * 0.0001
 
                 direction_to_source: Vector = self.source_pos - intersection_point_with_standoff
@@ -201,58 +195,3 @@ class Scene:
     
     def elaspsed_time(self):
         return time.perf_counter() - self.start_time
-
-
-##
-## Elements
-##
-
-
-class Element(ABC):
-    # TODO create and document abstract methods
-    pass
-
-
-class Cube(Element):
-    pass
-
-
-class PolygonVolume(Element):
-    pass
-
-
-class Sphere(Element):
-    def __init__(self, center: Vector, radius: float, color: Vector, reflectance=0.5):
-        self.center = center
-        self.radius = radius
-        self.color = color
-        self.reflectance = reflectance
-
-    def intersect(self, origin: Vector, direction: Vector):
-        b = 2 * direction.dot(origin - self.center)
-        c = (
-            abs(self.center)
-            + abs(origin)
-            - 2 * self.center.dot(origin)
-            - self.radius**2
-        )
-        discriminant = (b**2) - (4 * c)
-        sq = np.sqrt(np.maximum(0, discriminant))
-        h0 = (-b - sq) / 2
-        h1 = (-b + sq) / 2
-        h = np.where((h0 > 0) & (h0 < h1), h0, h1)
-        pred = (discriminant > 0) & (h > 0)
-        val = np.where(pred, h, FARAWAY)
-        return val
-
-    def diffuse_color(self, M):
-        return self.color
-
-    def compute_intersection_geometry(self, intersection_point: Vector) -> Vector:
-        normal_at_intersection = (intersection_point - self.center) * (1.0 / self.radius)
-        return normal_at_intersection
-
-class CheckeredSphere(Sphere):
-    def diffuse_color(self, M):
-        checker = ((M.x * 2).astype(int) % 2) == ((M.z * 2).astype(int) % 2)
-        return self.color * checker

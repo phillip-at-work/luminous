@@ -115,12 +115,11 @@ class Scene:
     def raytrace(self):
         self.start_time = time.perf_counter()
 
-        # TODO
-        # future implementations will permit multiple sources. but currently does not. hard coded for 0th.
-        # self.detector = self.detectors[0]
+        # TODO future implementations will permit multiple sources. but currently does not. hard coded for 0th.
         self.source = self.sources[0]
         self.source_pos: Vector = self.source.position
 
+        # TODO re-work as distinct processes or threads
         for detector in self.detectors:
 
             detector_pixels: Vector = self.create_screen_coord(detector.width, detector.height, detector.pointing_direction, detector.position)
@@ -187,14 +186,14 @@ class Scene:
                 self.ray_debugger.add_vector(start_point=illuminated_intersections, end_point=intersection_to_source, color=(255,0,255)) # to source
                     
                 # detect
-                ray_data = detector._capture_data(surface_normal_at_intersection, direction_to_source_unit, element,intersection_point, intersection_point_illuminated) #element.diffuse_color(intersection_point) * lv * intersection_point_illuminated
+                ray_data = detector._capture_data(surface_normal_at_intersection, direction_to_source_unit, element,intersection_point, intersection_point_illuminated)
 
                 # reflect, recurse
                 if bounce < 2:
                     new_ray_direction = (ray_pointing_direction - surface_normal_at_intersection * 2 * ray_pointing_direction.dot(surface_normal_at_intersection)).norm()
                     ray_data += self._recursive_trace(detector, intersection_point_with_standoff, new_ray_direction, elements, bounce + 1) * element.reflectance
 
-                ray_data += detector._calculate_model(surface_normal_at_intersection, direction_to_source_unit, direction_to_origin_unit, intersection_point_illuminated) #+= Vector(1, 1, 1) * np.power(np.clip(phong, 0, 1), 50) * intersection_point_illuminated
+                ray_data += detector._calculate_model(surface_normal_at_intersection, direction_to_source_unit, direction_to_origin_unit, intersection_point_illuminated)
 
                 rays += ray_data.place(hit)
 

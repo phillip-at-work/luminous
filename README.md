@@ -18,3 +18,4 @@ An object-oriented ray trace library with a scriptable API. See repo `https://gi
 - add Lens element defined by two radii and center thickness
 - add raytrace animation option for detectors, elements, and sources (independent)
 - add concrete implementation for PowerMeter (Detector ABC)
+- polarization model for sources (also allows refraction/reflection model to use polarization)

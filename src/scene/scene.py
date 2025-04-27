@@ -20,12 +20,19 @@ FARAWAY = 1.0e39
 
 class Scene:
 
-    def __init__(self, log_level=20, log_file="luminous.log") -> None:
+    def __init__(self, index_of_refraction=1, log_level=20, log_file="luminous.log") -> None:
         setup_logging(name='luminous', level=log_level, log_file=log_file)
+        self.start_time = None
+        self.index_of_refraction = index_of_refraction
         self.elements = list()
         self.detectors = list()
         self.sources = list()
         self.ray_debugger = NullRayDebugger()
+
+    def elaspsed_time(self):
+        if self.start_time is None:
+            raise ValueError('Timer has not been started. Call `elapsted_time` after calling `raytrace`.')
+        return time.perf_counter() - self.start_time
 
     def attach_ray_debugger(self, path="./results", filename="debug_ray_trace", display_3d_plot=True):
         self.ray_debugger = ConcreteRayDebugger()
@@ -158,10 +165,13 @@ class Scene:
 
                 ray_travel_distance: NDArray[np.float64] = extract(hit, distance)
                 ray_start_position: Vector = origin.extract(hit)
-                ray_pointing_direction: Vector = direction.extract(hit)
+                incident_ray: Vector = direction.extract(hit)
 
-                intersection_point: Vector = ray_start_position + ray_pointing_direction * ray_travel_distance
+                intersection_point: Vector = ray_start_position + incident_ray * ray_travel_distance
                 surface_normal_at_intersection: Vector = element.compute_intersection_normal(intersection_point)
+
+                # TODO if transmission > 0, we expect the ray to refract into the volume
+                # therefore the standoff should be into the volume, e.g., scalar = -0.0001 rather than 0.0001
                 intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * 0.0001
 
                 direction_to_source: Vector = self.source_pos - intersection_point_with_standoff
@@ -184,14 +194,40 @@ class Scene:
 
                 # reflect, recurse
                 if bounce < 2:
-                    new_ray_direction = (ray_pointing_direction - surface_normal_at_intersection * 2 * ray_pointing_direction.dot(surface_normal_at_intersection)).norm()
-                    ray_data += self._recursive_trace(detector, intersection_point_with_standoff, new_ray_direction, elements, bounce + 1) * element.reflectance
+                    reflected_specular_ray = self._reflected_ray(incident_ray, surface_normal_at_intersection)
+                    ray_data += self._recursive_trace(detector, intersection_point_with_standoff, reflected_specular_ray, elements, bounce + 1) * element.reflectance
 
                 ray_data += detector._calculate_model(surface_normal_at_intersection, direction_to_source_unit, direction_to_origin_unit, intersection_point_illuminated)
 
                 rays += ray_data.place(hit)
 
         return rays
+
+    def _reflected_ray(self, incident_ray, surface_normal_at_intersection):
+        # Reflected ray unit vector. See Reflections and Refractions in Ray Tracing, 2006, Greve
+        return incident_ray - surface_normal_at_intersection * 2 * incident_ray.dot(surface_normal_at_intersection)
     
-    def elaspsed_time(self):
-        return time.perf_counter() - self.start_time
+    def _transmitted_ray(self, incident_ray, surface_normal, n1, n2):
+        # Refracted ray unit vector. See Reflections and Refractions in Ray Tracing, 2006, Greve
+        n = n1 / n2
+        cos_theta_i = -incident_ray.dot(surface_normal)
+        sin_theta_t_squared = (n ** 2) * (1 - cos_theta_i**2)
+        return (n * incident_ray) + (n * cos_theta_i - np.sqrt(1 - sin_theta_t_squared**2)) * surface_normal
+    
+    def _reflection_transmission_weights(self, incident_ray, surface_normal, n1, n2):
+        # Ray weightings for reflected and refracted components assuming unpolarized source (fresnel equations)
+        # See Reflections and Refractions in Ray Tracing, 2006, Greve
+        n = n1 / n2
+        cos_theta_i = -incident_ray.dot(surface_normal)
+        sin_theta_t_squared = (n ** 2) * (1 - cos_theta_i**2)
+        cos_theta_t = np.sqrt(1 - sin_theta_t_squared)
+        perpendicular_component = ((n1 * cos_theta_i - n2 * cos_theta_t) / (n1 * cos_theta_i + n2 * cos_theta_t)) ** 2
+        parallel_component = ((n2 * cos_theta_i - n1 * cos_theta_t) / (n2 * cos_theta_i + n1 * cos_theta_t)) ** 2
+        r = (perpendicular_component + parallel_component) / 2
+        t = 1 - r
+        return r, t
+    
+    def _critical_angle(self, n1, n2):
+        return np.arcsin(n2 / n1)
+    
+    

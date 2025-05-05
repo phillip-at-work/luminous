@@ -6,19 +6,18 @@ from ..math.vector import Vector
 FARAWAY = 1.0e39
 
 class Element(ABC):
-    def __init__(self, center: Vector, color: Vector, reflectance: float = 0.5, transmittance: float = 0.0, refractive_index: float = 1.0):
+    def __init__(self, center: Vector, color: Vector, specularity: float = 0.5, transparent: bool = False, refractive_index: float = 1.0):
         '''
         Parameters:
             center (Vector): Element's center position in 3D space
             color (Vector): Element's color
-            reflectance (float): Reflectance coefficient of the element
-            transmittance (float): Transmittance coefficient of the element
+            specularity (float): Specularity coefficient, e.g., the shininess of the element
             refractive_index (float): Refractive index of the element
         '''
         self.center = center
         self.color = color
-        self.reflectance = reflectance
-        self.transmittance = transmittance
+        self.specularity = specularity
+        self.transparent = transparent
         self.refractive_index = refractive_index
 
     @abstractmethod
@@ -43,8 +42,8 @@ class Element(ABC):
         pass
 
 class Sphere(Element):
-    def __init__(self, center: Vector, radius: float, color: Vector, reflectance: float = 0.5, transmittance: float = 0.0, refractive_index: float = 1.0):
-        super().__init__(center, color, reflectance, transmittance, refractive_index)
+    def __init__(self, center: Vector, radius: float, color: Vector, specularity: float = 0.5, transparent: bool = False, refractive_index: float = 1.0):
+        super().__init__(center, color, specularity, transparent, refractive_index)
         self.radius = radius
 
     def intersect(self, origin: Vector, direction: Vector):

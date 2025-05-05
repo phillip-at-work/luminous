@@ -23,7 +23,7 @@ class Scene:
     def __init__(self, index_of_refraction=1, log_level=20, log_file="luminous.log") -> None:
         setup_logging(name='luminous', level=log_level, log_file=log_file)
         self.start_time = None
-        self.index_of_refraction = index_of_refraction
+        self.refractive_index = index_of_refraction
         self.elements = list()
         self.detectors = list()
         self.sources = list()
@@ -170,8 +170,60 @@ class Scene:
                 intersection_point: Vector = ray_start_position + incident_ray * ray_travel_distance
                 surface_normal_at_intersection: Vector = element.compute_intersection_normal(intersection_point)
 
-                # TODO if transmission > 0, we expect the ray to refract into the volume
-                # therefore the standoff should be into the volume, e.g., scalar = -0.0001 rather than 0.0001
+                if element.transparent:
+                    tir = self._total_internal_reflection(incident_ray, surface_normal_at_intersection, self.refractive_index, element.refractive_index)
+                    reflection_weight = np.ones(tir.shape, dtype=np.float16)
+                    transmission_weight = np.zeros(tir.shape, dtype=np.float16)
+
+                    if not np.all(tir):
+                        non_tir_indices = np.logical_not(tir)
+                        reflection_weight[non_tir_indices], transmission_weight[non_tir_indices] = self._reflection_transmission_weights(
+                            incident_ray.extract(non_tir_indices),
+                            surface_normal_at_intersection.extract(non_tir_indices),
+                            self.refractive_index,
+                            element.refractive_index
+                        )
+
+                    valid_transmission_indices = transmission_weight > 0
+                    if np.any(valid_transmission_indices):
+
+                        # TODO I think somewhere in this block I need to account for the color of the element through which the ray passes
+                        # ray_data = detector._capture_data(...)
+
+                        # initial intersection of ray and element
+                        element_intersection = intersection_point.extract(valid_transmission_indices)
+
+                        # this ray propogates inside the element
+                        incident_ray_into_volume = self._transmitted_ray(
+                            incident_ray.extract(valid_transmission_indices),
+                            surface_normal_at_intersection.extract(valid_transmission_indices),
+                            self.refractive_index,
+                            element.refractive_index
+                        )
+
+                        incident_ray_into_volume = element_intersection + incident_ray_into_volume
+
+                        ray_travel_distance_transmission: NDArray[np.float64] = element.intersect(element_intersection, incident_ray_into_volume)
+
+                        intersection_point_transmission: Vector = element_intersection + incident_ray_into_volume * ray_travel_distance_transmission
+                        surface_normal_within_volume: Vector = element.compute_intersection_normal(intersection_point_transmission)
+
+                        incident_ray_from_volume = self._transmitted_ray(
+                            intersection_point_transmission,
+                            surface_normal_within_volume,
+                            element.refractive_index,
+                            self.refractive_index
+                        )
+                        # TODO do something with `incident_ray_from_volume`, e.g., continue tracing rays to subsequent elements somehow
+                        # possibly correct to simply recurse here? ray_data += self._recursive_trace(...)
+                        # perhaps these rays can be added to other data structure tracing rays associated with not `element.transparent` case?
+
+                    if np.all(reflection_weight == 0):
+                        continue
+
+                # TODO probably some graceful way to marry these two segments of code together
+                # or is it necessary to add a reflection contingency for element.transparent?
+
                 intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * 0.0001
 
                 direction_to_source: Vector = self.source_pos - intersection_point_with_standoff
@@ -190,31 +242,47 @@ class Scene:
                 self.ray_debugger.add_vector(start_point=illuminated_intersections, end_point=intersection_to_source, color=(255,0,255)) # to source
                     
                 # detect
-                ray_data = detector._capture_data(surface_normal_at_intersection, direction_to_source_unit, element,intersection_point, intersection_point_illuminated)
+                ray_data = detector._capture_data(surface_normal_at_intersection, direction_to_source_unit, element, intersection_point, intersection_point_illuminated)
 
-                # reflect, recurse
+                # reflect
                 if bounce < 2:
-                    reflected_specular_ray = self._reflected_ray(incident_ray, surface_normal_at_intersection)
-                    ray_data += self._recursive_trace(detector, intersection_point_with_standoff, reflected_specular_ray, elements, bounce + 1) * element.reflectance
+                    reflected_ray = self._reflected_ray(incident_ray, surface_normal_at_intersection)
+                    ray_data += self._recursive_trace(detector, intersection_point_with_standoff, reflected_ray, elements, bounce + 1) * element.specularity
 
                 ray_data += detector._calculate_model(surface_normal_at_intersection, direction_to_source_unit, direction_to_origin_unit, intersection_point_illuminated)
 
                 rays += ray_data.place(hit)
 
         return rays
+    
+    def _total_internal_reflection(self, incident_ray: Vector, surface_normal: Vector, n1: float, n2: float) -> bool:
+        # Determine if incident angle >= critical angle
+        # See Reflections and Refractions in Ray Tracing, 2006, Greve
+        if n2 >= n1:
+            return np.zeros(incident_ray.x.shape, dtype=bool)
+        
+        cos_theta_i = -incident_ray.dot(surface_normal)
+        theta_i = np.arccos(np.clip(cos_theta_i, -1.0, 1.0))
+        critical_angle = np.arcsin(np.clip(n2 / n1, -1.0, 1.0))
+        
+        return theta_i > critical_angle
 
-    def _reflected_ray(self, incident_ray, surface_normal_at_intersection):
+    def _reflected_ray(self, incident_ray: Vector, surface_normal_at_intersection: Vector) -> Vector:
         # Reflected ray unit vector. See Reflections and Refractions in Ray Tracing, 2006, Greve
         return incident_ray - surface_normal_at_intersection * 2 * incident_ray.dot(surface_normal_at_intersection)
     
-    def _transmitted_ray(self, incident_ray, surface_normal, n1, n2):
+    def _transmitted_ray(self, incident_ray: Vector, surface_normal: Vector, n1: float, n2: float) -> Vector:
         # Refracted ray unit vector. See Reflections and Refractions in Ray Tracing, 2006, Greve
         n = n1 / n2
         cos_theta_i = -incident_ray.dot(surface_normal)
         sin_theta_t_squared = (n ** 2) * (1 - cos_theta_i**2)
-        return (n * incident_ray) + (n * cos_theta_i - np.sqrt(1 - sin_theta_t_squared**2)) * surface_normal
+        term1 = n * incident_ray
+        term2 = n * cos_theta_i - np.sqrt(1 - sin_theta_t_squared)
+        term3 = term2 * surface_normal
+        transmitted_ray = term3 + term1
+        return transmitted_ray.norm()
     
-    def _reflection_transmission_weights(self, incident_ray, surface_normal, n1, n2):
+    def _reflection_transmission_weights(self, incident_ray: Vector, surface_normal: Vector, n1: float, n2: float):
         # Ray weightings for reflected and refracted components assuming unpolarized source (fresnel equations)
         # See Reflections and Refractions in Ray Tracing, 2006, Greve
         n = n1 / n2
@@ -225,7 +293,7 @@ class Scene:
         parallel_component = ((n2 * cos_theta_i - n1 * cos_theta_t) / (n2 * cos_theta_i + n1 * cos_theta_t)) ** 2
         r = (perpendicular_component + parallel_component) / 2
         t = 1 - r
-        return r, t
+        return r.astype(np.float32), t.astype(np.float32)
     
     def _critical_angle(self, n1, n2):
         return np.arcsin(n2 / n1)

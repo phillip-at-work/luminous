@@ -28,6 +28,7 @@ class Scene:
         self.detectors = list()
         self.sources = list()
         self.ray_debugger = NullRayDebugger()
+        self.counter = 0
 
     def elaspsed_time(self):
         if self.start_time is None:
@@ -168,12 +169,21 @@ class Scene:
                 incident_ray: Vector = direction.extract(hit)
 
                 intersection_point: Vector = ray_start_position + incident_ray * ray_travel_distance
-                surface_normal_at_intersection: Vector = element.compute_intersection_normal(intersection_point)
+                surface_normal_at_intersection: Vector = element.compute_outward_normal(intersection_point)
 
                 if element.transparent:
-                    tir = self._total_internal_reflection(incident_ray, surface_normal_at_intersection, self.refractive_index, element.refractive_index)
-                    reflection_weight = np.ones(tir.shape, dtype=np.float16)
-                    transmission_weight = np.zeros(tir.shape, dtype=np.float16)
+
+                    # compute the transmission in reverse, e.g., from Scene into Element volume
+                    incident_ray_within_volume = self._transmitted_ray(
+                            incident_ray,
+                            surface_normal_at_intersection,
+                            self.refractive_index,
+                            element.refractive_index
+                        )
+
+                    tir = self._total_internal_reflection(incident_ray_within_volume, surface_normal_at_intersection, self.refractive_index, element.refractive_index)
+                    reflection_weight = np.zeros(tir.shape, dtype=np.float16)
+                    transmission_weight = np.ones(tir.shape, dtype=np.float16)
 
                     if not np.all(tir):
                         non_tir_indices = np.logical_not(tir)
@@ -187,33 +197,23 @@ class Scene:
                     valid_transmission_indices = transmission_weight > 0
                     if np.any(valid_transmission_indices):
 
+                        initial_intersection_within_volume = intersection_point.extract(valid_transmission_indices)
+                        incident_ray_within_volume = incident_ray_within_volume.extract(valid_transmission_indices)
+                        surface_normal_at_intersection_inside: Vector = element.compute_inward_normal(initial_intersection_within_volume)
+                        intersection_point_with_standoff_inside = initial_intersection_within_volume + surface_normal_at_intersection_inside * 0.0001
+                        ray_travel_distance_transmission: NDArray[np.float64] = element.intersect(intersection_point_with_standoff_inside, incident_ray_within_volume)
+                        full_transmitted_ray_within_volume = initial_intersection_within_volume + incident_ray_within_volume * ray_travel_distance_transmission
+                        
+                        # ray debugger
+                        self.ray_debugger.add_vector(start_point=initial_intersection_within_volume, end_point=full_transmitted_ray_within_volume, color=(255,255,0))
+
+                        # TODO further filter out rays 
+                        # if a transmitted ray which passes through the volume does not intersect any subsequent
+                        # element OR the source itself, clip that out too
+
                         # TODO I think somewhere in this block I need to account for the color of the element through which the ray passes
                         # ray_data = detector._capture_data(...)
 
-                        # initial intersection of ray and element
-                        element_intersection = intersection_point.extract(valid_transmission_indices)
-
-                        # this ray propogates inside the element
-                        incident_ray_into_volume = self._transmitted_ray(
-                            incident_ray.extract(valid_transmission_indices),
-                            surface_normal_at_intersection.extract(valid_transmission_indices),
-                            self.refractive_index,
-                            element.refractive_index
-                        )
-
-                        incident_ray_into_volume = element_intersection + incident_ray_into_volume
-
-                        ray_travel_distance_transmission: NDArray[np.float64] = element.intersect(element_intersection, incident_ray_into_volume)
-
-                        intersection_point_transmission: Vector = element_intersection + incident_ray_into_volume * ray_travel_distance_transmission
-                        surface_normal_within_volume: Vector = element.compute_intersection_normal(intersection_point_transmission)
-
-                        incident_ray_from_volume = self._transmitted_ray(
-                            intersection_point_transmission,
-                            surface_normal_within_volume,
-                            element.refractive_index,
-                            self.refractive_index
-                        )
                         # TODO do something with `incident_ray_from_volume`, e.g., continue tracing rays to subsequent elements somehow
                         # possibly correct to simply recurse here? ray_data += self._recursive_trace(...)
                         # perhaps these rays can be added to other data structure tracing rays associated with not `element.transparent` case?

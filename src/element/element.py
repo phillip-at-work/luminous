@@ -35,9 +35,16 @@ class Element(ABC):
         pass
 
     @abstractmethod
-    def compute_intersection_normal(self, intersection_point: Vector) -> Vector:
+    def compute_outward_normal(self, intersection_point: Vector) -> Vector:
         '''
-        Compute normal vector associated with incident Vector's point of intersection.
+        Compute normal vector, facing away from the volume, associated with incident Vector's point of intersection.
+        '''
+        pass
+
+    @abstractmethod
+    def compute_inward_normal(self, intersection_point: Vector) -> Vector:
+        '''
+        Compute normal vector, facing into the volume, associated with incident Vector's point of intersection.
         '''
         pass
 
@@ -66,8 +73,12 @@ class Sphere(Element):
     def diffuse_color(self, M: Vector) -> Vector:
         return self.color
 
-    def compute_intersection_normal(self, intersection_point: Vector) -> Vector:
+    def compute_outward_normal(self, intersection_point: Vector) -> Vector:
         normal_at_intersection = (intersection_point - self.center) * (1.0 / self.radius)
+        return normal_at_intersection
+    
+    def compute_inward_normal(self, intersection_point: Vector) -> Vector:
+        normal_at_intersection = (self.center - intersection_point) * (1.0 / self.radius)
         return normal_at_intersection
 
 class CheckeredSphere(Sphere):

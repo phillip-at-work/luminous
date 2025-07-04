@@ -44,7 +44,12 @@ class Vector():
             raise TypeError("Vector subtraction not compatible with type: %s" % type(other))
     
     def __rsub__(self, other):
-        return self.__sub__(other)
+        if isinstance(other, Vector):
+            return Vector(other.x - self.x, other.y - self.y, other.z - self.z)
+        elif isinstance(other, (np.ndarray, numbers.Number)):
+            return Vector(other - self.x, other - self.y, other - self.z)
+        else:
+            raise TypeError("Subtraction not compatible with type: %s" % type(other))
 
     def dot(self, other):
         return (self.x * other.x) + (self.y * other.y) + (self.z * other.z)
@@ -65,8 +70,8 @@ class Vector():
             raise TypeError("Vector power not compatible with type: %s" % type(power))
 
     def norm(self):
-        mag = self.magnitude()
-        return self * (1.0 / np.where(mag == 0, 1, mag))
+        mag = np.sqrt(self.x**2 + self.y**2 + self.z**2)
+        return Vector(self.x / mag, self.y / mag, self.z / mag)
 
     def components(self):
         return (self.x, self.y, self.z)

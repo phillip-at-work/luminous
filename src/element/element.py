@@ -74,11 +74,11 @@ class Sphere(Element):
         return self.color
 
     def compute_outward_normal(self, intersection_point: Vector) -> Vector:
-        normal_at_intersection = (intersection_point - self.center) * (1.0 / self.radius)
+        normal_at_intersection = (intersection_point - self.center).norm()
         return normal_at_intersection
     
     def compute_inward_normal(self, intersection_point: Vector) -> Vector:
-        normal_at_intersection = (self.center - intersection_point) * (1.0 / self.radius)
+        normal_at_intersection = (self.center - intersection_point).norm()
         return normal_at_intersection
 
 class CheckeredSphere(Sphere):

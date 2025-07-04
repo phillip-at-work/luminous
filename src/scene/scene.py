@@ -155,6 +155,8 @@ class Scene:
         
         for element, distance in zip(elements, distances):
 
+            self.ray_debugger.add_point(element.center, color=(0,255,0))
+
             '''
             len(hit) == len(minimum_distances)
             for each boolean in this array:
@@ -171,6 +173,8 @@ class Scene:
                 intersection_point: Vector = ray_start_position + incident_ray * ray_travel_distance
                 surface_normal_at_intersection: Vector = element.compute_outward_normal(intersection_point)
 
+                # self.ray_debugger.add_vector(start_point=intersection_point, end_point=intersection_point+surface_normal_at_intersection, color=(100, 100, 100))
+
                 if element.transparent:
 
                     # compute the transmission in reverse, e.g., from Scene into Element volume
@@ -182,8 +186,8 @@ class Scene:
                         )
 
                     tir = self._total_internal_reflection(incident_ray_within_volume, surface_normal_at_intersection, self.refractive_index, element.refractive_index)
-                    reflection_weight = np.zeros(tir.shape, dtype=np.float16)
-                    transmission_weight = np.ones(tir.shape, dtype=np.float16)
+                    reflection_weight = np.zeros(tir.shape, dtype=np.float32)
+                    transmission_weight = np.ones(tir.shape, dtype=np.float32)
 
                     if not np.all(tir):
                         non_tir_indices = np.logical_not(tir)
@@ -205,24 +209,34 @@ class Scene:
                         full_transmitted_ray_within_volume = initial_intersection_within_volume + incident_ray_within_volume * ray_travel_distance_transmission
                         
                         # ray debugger
-                        self.ray_debugger.add_vector(start_point=initial_intersection_within_volume, end_point=full_transmitted_ray_within_volume, color=(255,255,0))
+                        # self.ray_debugger.add_vector(start_point=initial_intersection_within_volume, end_point=initial_intersection_within_volume+surface_normal_at_intersection_inside, color=(0,255,255))
+                        self.ray_debugger.add_vector(start_point=intersection_point_with_standoff_inside, end_point=full_transmitted_ray_within_volume, color=(255,255,0))
 
-                        # TODO further filter out rays 
-                        # if a transmitted ray which passes through the volume does not intersect any subsequent
-                        # element OR the source itself, clip that out too
+                        surface_normal_at_intersection_from_volume: Vector = element.compute_inward_normal(full_transmitted_ray_within_volume)
+                        direction_new = self._transmitted_ray(full_transmitted_ray_within_volume, surface_normal_at_intersection_from_volume, self.refractive_index, element.refractive_index)
+                        origin_new = full_transmitted_ray_within_volume + surface_normal_at_intersection_from_volume * 0.0001
 
-                        # TODO I think somewhere in this block I need to account for the color of the element through which the ray passes
-                        # ray_data = detector._capture_data(...)
+                        # ray debugger
+                        # self.ray_debugger.add_vector(start_point=origin_new, end_point=origin_new+surface_normal_at_intersection_from_volume, color=(100,255,100))
+                        self.ray_debugger.add_vector(start_point=origin_new, end_point=origin_new+direction_new, color=(255,123,0))
 
-                        # TODO do something with `incident_ray_from_volume`, e.g., continue tracing rays to subsequent elements somehow
-                        # possibly correct to simply recurse here? ray_data += self._recursive_trace(...)
-                        # perhaps these rays can be added to other data structure tracing rays associated with not `element.transparent` case?
+                        # TODO there's a couple options here to stitch these pieces together
+                        # 1. recurse. currently places many addition transmission rays where they should not be. also includes `can_see_source` logic where none should be. also seems inconsistent with dimensionality of `origin` and `direction` generally, which should be `size(x)=detector.length*detector.width`...
+                        # 2. allow execution to 'flow down'. compute `origin_new` and `direction_new` and simply patch these into the detector in the correct corrsponding indices
 
-                    if np.all(reflection_weight == 0):
-                        continue
+                        # direction_to_source: Vector = self.source_pos - origin_new
+                        # direction_to_source_unit: Vector = direction_to_source.norm()
+                        # direction_to_origin_unit: Vector = (detector.position - full_transmitted_ray_within_volume).norm()
+                        # intersections_blocking_source: list[NDArray[np.float64]] = [s.intersect(origin_new, direction_to_source_unit) for s in elements]
+                        # minimum_distances_with_standoff: NDArray[np.float64] = reduce(np.minimum, intersections_blocking_source)
+                        # distances_to_source = direction_to_source.magnitude()
+                        # intersection_point_illuminated: NDArray[np.bool_] = minimum_distances_with_standoff >= distances_to_source
 
-                # TODO probably some graceful way to marry these two segments of code together
-                # or is it necessary to add a reflection contingency for element.transparent?
+                        # ray_data = detector._capture_data(surface_normal_at_intersection_from_volume, direction_to_source_unit, element, full_transmitted_ray_within_volume, intersection_point_illuminated)
+                        # self._recursive_trace(detector, origin_new, direction_new, elements, bounce) * element.specularity
+
+                    # if np.all(reflection_weight == 0):
+                    #     continue
 
                 intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * 0.0001
 

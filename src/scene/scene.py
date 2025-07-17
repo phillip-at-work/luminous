@@ -224,16 +224,13 @@ class Scene:
                         # 1. recurse. currently places many addition transmission rays where they should not be. also includes `can_see_source` logic where none should be. also seems inconsistent with dimensionality of `origin` and `direction` generally, which should be `size(x)=detector.length*detector.width`...
                         # 2. allow execution to 'flow down'. compute `origin_new` and `direction_new` and simply patch these into the detector in the correct corrsponding indices
 
-                        # direction_to_source: Vector = self.source_pos - origin_new
-                        # direction_to_source_unit: Vector = direction_to_source.norm()
-                        # direction_to_origin_unit: Vector = (detector.position - full_transmitted_ray_within_volume).norm()
-                        # intersections_blocking_source: list[NDArray[np.float64]] = [s.intersect(origin_new, direction_to_source_unit) for s in elements]
-                        # minimum_distances_with_standoff: NDArray[np.float64] = reduce(np.minimum, intersections_blocking_source)
-                        # distances_to_source = direction_to_source.magnitude()
-                        # intersection_point_illuminated: NDArray[np.bool_] = minimum_distances_with_standoff >= distances_to_source
-
-                        # ray_data = detector._capture_data(surface_normal_at_intersection_from_volume, direction_to_source_unit, element, full_transmitted_ray_within_volume, intersection_point_illuminated)
-                        # self._recursive_trace(detector, origin_new, direction_new, elements, bounce) * element.specularity
+                        # Update specific indices of `origin` and `direction` with values from `origin_new` and `direction_new`
+                        origin.x[hit] = origin_new.x
+                        origin.y[hit] = origin_new.y
+                        origin.z[hit] = origin_new.z
+                        direction.x[hit] = direction_new.x
+                        direction.y[hit] = direction_new.y
+                        direction.z[hit] = direction_new.z
 
                     # if np.all(reflection_weight == 0):
                     #     continue

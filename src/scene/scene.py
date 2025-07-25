@@ -261,16 +261,20 @@ class Scene:
                 minimum_distances_with_standoff: NDArray[np.float64] = reduce(np.minimum, intersections_blocking_source)
                 distances_to_source = direction_to_source.magnitude()
                 intersection_point_illuminated: NDArray[np.bool_] = minimum_distances_with_standoff >= distances_to_source
-                
+
+                # TODO probably some Vector values passed into color model must undergo extraction with `intersection_point_illuminated`
+                # as I do for ray debugger, but not for plotted data
+
                 if not element.transparent:
-                    # to elements
-                    self.ray_debugger.add_vector(start_point=ray_start_position, end_point=intersection_point_with_standoff, color=(0,0,255))
                     illuminated_intersections: Vector = intersection_point.extract(intersection_point_illuminated)
                     direction_to_source_minima: Vector = direction_to_source.extract(intersection_point_illuminated)
                     intersection_to_source: Vector = illuminated_intersections + direction_to_source_minima
+
+                    # to elements
+                    self.ray_debugger.add_vector(start_point=ray_start_position, end_point=intersection_point_with_standoff, color=(0,0,255))
                     # to source
                     self.ray_debugger.add_vector(start_point=illuminated_intersections, end_point=intersection_to_source, color=(255,0,255))
-                    
+
                 # detect
                 ray_data = detector._capture_data(surface_normal_at_intersection, direction_to_source_unit, element, intersection_point, intersection_point_illuminated)
 

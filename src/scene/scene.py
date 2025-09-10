@@ -133,7 +133,7 @@ class Scene:
             self.ray_debugger.add_vector(start_point=detector.position, end_point=detector_dir_translate, color=(255, 0, 0))
             self.ray_debugger.add_point(detector_pixels, color=(255,0,0))
 
-            detector.data = self._recursive_trace(detector=detector, origin=detector_pixels, direction=pixel_incident_rays, elements=self.elements, bounce=0)
+            detector._data = self._recursive_trace(detector=detector, origin=detector_pixels, direction=pixel_incident_rays, elements=self.elements, bounce=0)
 
     def _recursive_trace(self, detector: Detector, origin: Vector, direction: Vector, elements: list['Element'], bounce: int):
 
@@ -276,14 +276,17 @@ class Scene:
                     self.ray_debugger.add_vector(start_point=illuminated_intersections, end_point=intersection_to_source, color=(255,0,255))
 
                 # detect
-                ray_data = detector._capture_data(surface_normal_at_intersection, direction_to_source_unit, element, intersection_point, intersection_point_illuminated)
+                ray_data = detector._reflection_model(surface_normal_at_intersection, 
+                                                      direction_to_source_unit,
+                                                      element, 
+                                                      intersection_point, 
+                                                      direction_to_origin_unit, 
+                                                      intersection_point_illuminated)
 
                 # reflect
                 if bounce < 2:
                     reflected_ray = self._reflected_ray(incident_ray, surface_normal_at_intersection)
-                    ray_data += self._recursive_trace(detector, intersection_point_with_standoff, reflected_ray, elements, bounce + 1) * element.specularity
-
-                ray_data += detector._calculate_model(surface_normal_at_intersection, direction_to_source_unit, direction_to_origin_unit, intersection_point_illuminated)
+                    ray_data += self._recursive_trace(detector, intersection_point_with_standoff, reflected_ray, elements, bounce + 1)
 
                 rays += ray_data.place(hit)
 

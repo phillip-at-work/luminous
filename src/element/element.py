@@ -6,19 +6,25 @@ from ..math.vector import Vector
 FARAWAY = 1.0e39
 
 class Element(ABC):
-    def __init__(self, center: Vector, color: Vector, specularity: float = 0.5, transparent: bool = False, refractive_index: float = 1.0):
+    def __init__(self, center: Vector, color: Vector, transparent: bool = False, refractive_index: float = 1.0, user_params=None):
         '''
         Parameters:
             center (Vector): Element's center position in 3D space
             color (Vector): Element's color
-            specularity (float): Specularity coefficient, e.g., the shininess of the element
             refractive_index (float): Refractive index of the element
+            user_params (dict): Additional user-defined parameters
         '''
         self.center = center
         self.color = color
-        self.specularity = specularity
         self.transparent = transparent
         self.refractive_index = refractive_index
+        self.user_params = user_params or dict()
+
+        # mege `user_params` into instance
+        for key, value in self.user_params.items():
+            if hasattr(self, key):
+                raise AttributeError(f"Attribute '{key}' already exists in the instance and cannot be overwritten.")
+            setattr(self, key, value)
 
     @abstractmethod
     def intersect(self, origin: Vector, direction: Vector):
@@ -28,9 +34,9 @@ class Element(ABC):
         pass
 
     @abstractmethod
-    def diffuse_color(self, M: Vector) -> Vector:
+    def surface_color(self, M: Vector) -> Vector:
         '''
-        Calculate the diffuse color at a given point on the element.
+        Calculate or otherwise return the surface color of the element at point of intersection.
         '''
         pass
 
@@ -49,8 +55,8 @@ class Element(ABC):
         pass
 
 class Sphere(Element):
-    def __init__(self, center: Vector, radius: float, color: Vector, specularity: float = 0.5, transparent: bool = False, refractive_index: float = 1.0):
-        super().__init__(center, color, specularity, transparent, refractive_index)
+    def __init__(self, center: Vector, radius: float, color: Vector, transparent: bool = False, refractive_index: float = 1.0, user_params=None):
+        super().__init__(center, color, transparent, refractive_index, user_params)
         self.radius = radius
 
     def intersect(self, origin: Vector, direction: Vector):
@@ -70,7 +76,7 @@ class Sphere(Element):
         val = np.where(pred, h, FARAWAY)
         return val
 
-    def diffuse_color(self, M: Vector) -> Vector:
+    def surface_color(self, M: Vector) -> Vector:
         return self.color
 
     def compute_outward_normal(self, intersection_point: Vector) -> Vector:
@@ -82,6 +88,10 @@ class Sphere(Element):
         return normal_at_intersection
 
 class CheckeredSphere(Sphere):
-    def diffuse_color(self, M: Vector) -> Vector:
+    def __init__(self, center: Vector, radius: float, color: Vector, transparent: bool = False, refractive_index: float = 1.0, checker_color: Vector = Vector(1, 1, 1), user_params=None):
+        super().__init__(center, radius, color, transparent, refractive_index, user_params)
+        self.checker_color = checker_color
+
+    def surface_color(self, M: Vector) -> Vector:
         checker = ((M.x * 2).astype(int) % 2) == ((M.z * 2).astype(int) % 2)
-        return self.color * checker
+        return self.color * checker + self.checker_color * (1 - checker)

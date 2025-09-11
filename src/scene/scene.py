@@ -27,6 +27,7 @@ class Scene:
         self.elements = list()
         self.detectors = list()
         self.sources = list()
+        self.intersection_map = dict()
         self.ray_debugger = NullRayDebugger()
         self.counter = 0
 
@@ -116,10 +117,6 @@ class Scene:
         
     def raytrace(self):
         self.start_time = time.perf_counter()
-
-        # TODO future implementations will permit multiple sources. but currently does not. hard coded for 0th.
-        self.source = self.sources[0]
-        self.source_pos: Vector = self.source.position
 
         # TODO re-work as distinct processes or threads
         for detector in self.detectors:
@@ -253,34 +250,46 @@ class Scene:
                     #     continue
 
                 intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * 0.0001
-
-                direction_to_source: Vector = self.source_pos - intersection_point_with_standoff
-                direction_to_source_unit: Vector = direction_to_source.norm()
                 direction_to_origin_unit: Vector = (detector.position - intersection_point).norm()
-                intersections_blocking_source: list[NDArray[np.float64]] = [s.intersect(intersection_point_with_standoff, direction_to_source_unit) for s in elements]
-                minimum_distances_with_standoff: NDArray[np.float64] = reduce(np.minimum, intersections_blocking_source)
-                distances_to_source = direction_to_source.magnitude()
-                intersection_point_illuminated: NDArray[np.bool_] = minimum_distances_with_standoff >= distances_to_source
 
-                # TODO probably some Vector values passed into color model must undergo extraction with `intersection_point_illuminated`
-                # as I do for ray debugger, but not for plotted data
+                # TODO one possible solution: iterate through all sources, computing each of these and plotting debug rays
+                # just before calling `_reflection_model`, filter rays to skip those that would produce source-to-intersection non solution
+                # send new versions of `direction_to_source_unit` and `intersection_point_illuminated`, which account for all sources
 
-                if not element.transparent:
-                    illuminated_intersections: Vector = intersection_point.extract(intersection_point_illuminated)
-                    direction_to_source_minima: Vector = direction_to_source.extract(intersection_point_illuminated)
-                    intersection_to_source: Vector = illuminated_intersections + direction_to_source_minima
+                for source in self.sources:
+                    # # TODO future implementations will permit multiple sources. but currently does not. hard coded for 0th.
+                    # self.source = self.sources[0]
+                    # self.source_pos: Vector = self.source.position
 
-                    # to elements
-                    self.ray_debugger.add_vector(start_point=ray_start_position, end_point=intersection_point_with_standoff, color=(0,0,255))
-                    # to source
-                    self.ray_debugger.add_vector(start_point=illuminated_intersections, end_point=intersection_to_source, color=(255,0,255))
+                    direction_to_source: Vector = source.position - intersection_point_with_standoff
+                    direction_to_source_unit: Vector = direction_to_source.norm()
+                    intersections_blocking_source: list[NDArray[np.float64]] = [s.intersect(intersection_point_with_standoff, direction_to_source_unit) for s in elements]
+                    minimum_distances_with_standoff: NDArray[np.float64] = reduce(np.minimum, intersections_blocking_source)
+                    distances_to_source = direction_to_source.magnitude()
+                    intersection_point_illuminated: NDArray[np.bool_] = minimum_distances_with_standoff >= distances_to_source
+
+                    self.intersection_map[source] 
+
+                    # TODO probably some Vector values passed into color model must undergo extraction with `intersection_point_illuminated`
+                    # as I do for ray debugger, but not for plotted data
+
+                    if not element.transparent:
+                        illuminated_intersections: Vector = intersection_point.extract(intersection_point_illuminated)
+                        direction_to_source_minima: Vector = direction_to_source.extract(intersection_point_illuminated)
+                        intersection_to_source: Vector = illuminated_intersections + direction_to_source_minima
+
+                        # to elements
+                        self.ray_debugger.add_vector(start_point=ray_start_position, end_point=intersection_point_with_standoff, color=(0,0,255))
+                        # to source
+                        self.ray_debugger.add_vector(start_point=illuminated_intersections, end_point=intersection_to_source, color=(255,0,255))
 
                 # detect
-                ray_data = detector._reflection_model(surface_normal_at_intersection, 
-                                                      direction_to_source_unit,
-                                                      element, 
-                                                      intersection_point, 
+                ray_data = detector._reflection_model(element,
+                                                      intersection_point,
+                                                      surface_normal_at_intersection, 
                                                       direction_to_origin_unit, 
+                                                      # TODO revise to account for >1 source
+                                                      direction_to_source_unit,
                                                       intersection_point_illuminated)
 
                 # reflect

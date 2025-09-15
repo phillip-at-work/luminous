@@ -27,6 +27,7 @@ class Scene:
         self.elements = list()
         self.detectors = list()
         self.sources = list()
+        self.intersection_map = list()
         self.ray_debugger = NullRayDebugger()
         self.counter = 0
 
@@ -117,10 +118,6 @@ class Scene:
     def raytrace(self):
         self.start_time = time.perf_counter()
 
-        # TODO future implementations will permit multiple sources. but currently does not. hard coded for 0th.
-        self.source = self.sources[0]
-        self.source_pos: Vector = self.source.position
-
         # TODO re-work as distinct processes or threads
         for detector in self.detectors:
 
@@ -142,7 +139,7 @@ class Scene:
         len(distances) = number of elements in scene
         len(distances)[n] = number of rays
         '''
-        distances: list[NDArray[np.float64]] = [s.intersect(origin, direction) for s in elements]
+        distances: list[NDArray[np.float64]] = [element.intersect(origin, direction) for element in elements]
 
         '''
         Find element-wise minimum for rays
@@ -226,7 +223,7 @@ class Scene:
                         # normal vector
                         # self.ray_debugger.add_vector(start_point=origin_new, end_point=origin_new+direction_new, color=(255,123,0))
 
-                        distances_refract: list[NDArray[np.float64]] = [s.intersect(origin_new, direction_new) for s in elements]
+                        distances_refract: list[NDArray[np.float64]] = [element.intersect(origin_new, direction_new) for element in elements]
                         distance_refract: NDArray[np.float64] = reduce(np.minimum, distances_refract)
 
                         hit_refract: NDArray[np.bool_] = distance_refract != INFINITE
@@ -255,36 +252,38 @@ class Scene:
                 intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * 0.0001
                 direction_to_origin_unit: Vector = (detector.position - intersection_point).norm()
 
+                for source in self.sources:
 
+                    direction_to_source: Vector = source.position - intersection_point_with_standoff
+                    direction_to_source_unit: Vector = direction_to_source.norm()
+                    intersections_blocking_source: list[NDArray[np.float64]] = [element.intersect(intersection_point_with_standoff, direction_to_source_unit) for element in elements]
+                    minimum_distances_with_standoff: NDArray[np.float64] = reduce(np.minimum, intersections_blocking_source)
+                    distances_to_source = direction_to_source.magnitude()
+                    intersection_point_illuminated: NDArray[np.bool_] = minimum_distances_with_standoff >= distances_to_source
 
-                direction_to_source: Vector = self.source_pos - intersection_point_with_standoff
-                direction_to_source_unit: Vector = direction_to_source.norm()
-                intersections_blocking_source: list[NDArray[np.float64]] = [s.intersect(intersection_point_with_standoff, direction_to_source_unit) for s in elements]
-                minimum_distances_with_standoff: NDArray[np.float64] = reduce(np.minimum, intersections_blocking_source)
-                distances_to_source = direction_to_source.magnitude()
-                intersection_point_illuminated: NDArray[np.bool_] = minimum_distances_with_standoff >= distances_to_source
+                    self.intersection_map.append({'source': source, 'direction_to_source_unit': direction_to_source_unit, 'intersection_point_illuminated': intersection_point_illuminated})
 
-                # TODO probably some Vector values passed into color model must undergo extraction with `intersection_point_illuminated`
-                # as I do for ray debugger, but not for plotted data
+                    # TODO probably some Vector values passed into color model must undergo extraction with `intersection_point_illuminated`
+                    # as I do for ray debugger, but not for plotted data
 
-                if not element.transparent:
-                    illuminated_intersections: Vector = intersection_point.extract(intersection_point_illuminated)
-                    direction_to_source_minima: Vector = direction_to_source.extract(intersection_point_illuminated)
-                    intersection_to_source: Vector = illuminated_intersections + direction_to_source_minima
+                    if not element.transparent:
+                        illuminated_intersections: Vector = intersection_point.extract(intersection_point_illuminated)
+                        direction_to_source_minima: Vector = direction_to_source.extract(intersection_point_illuminated)
+                        intersection_to_source: Vector = illuminated_intersections + direction_to_source_minima
 
-                    # to elements
-                    self.ray_debugger.add_vector(start_point=ray_start_position, end_point=intersection_point_with_standoff, color=(0,0,255))
-                    # to source
-                    self.ray_debugger.add_vector(start_point=illuminated_intersections, end_point=intersection_to_source, color=(255,0,255))
+                        # to elements
+                        self.ray_debugger.add_vector(start_point=ray_start_position, end_point=intersection_point_with_standoff, color=(0,0,255))
+                        # to source
+                        self.ray_debugger.add_vector(start_point=illuminated_intersections, end_point=intersection_to_source, color=(255,0,255))
 
                 # detect
                 ray_data = detector._reflection_model(element,
                                                       intersection_point,
                                                       surface_normal_at_intersection, 
                                                       direction_to_origin_unit, 
-                                                      # TODO revise to account for >1 source
-                                                      direction_to_source_unit,
-                                                      intersection_point_illuminated)
+                                                      self.intersection_map)
+                
+                self.intersection_map.clear()
 
                 # reflect
                 if bounce < 2:

@@ -6,7 +6,7 @@ from ..math.vector import Vector
 FARAWAY = 1.0e39
 
 class Element(ABC):
-    def __init__(self, center: Vector, color: Vector, transparent: bool = False, refractive_index: float = 1.0, user_params=None):
+    def __init__(self, center: Vector, color: Vector, transparent: bool = False, refractive_index: float = 1.0, user_params: dict = None):
         '''
         Parameters:
             center (Vector): Element's center position in 3D space

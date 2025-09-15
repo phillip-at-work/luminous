@@ -20,3 +20,4 @@ An object-oriented ray trace library with a scriptable API. See repo `https://gi
 - add concrete implementation for PowerMeter (Detector ABC)
 - polarization model for sources (also allows refraction/reflection model to use polarization)
 - permit Detector to accept a lens assembly argument (Detector should be capable of tracing rays w/o a lens)
+- add STL filetype saving for ray debugger

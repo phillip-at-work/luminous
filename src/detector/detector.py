@@ -1,15 +1,18 @@
+from __future__ import annotations
 from abc import ABC, abstractmethod
 import numpy as np
 from PIL import Image
 
 from ..math.vector import Vector
 from ..element.element import Element
+from .render_targets import RenderTarget
 
 
 class Detector(ABC):
-    def __init__(self, width: int, height: int, position: Vector, pointing_direction: Vector):
+    def __init__(self, width: int, height: int, position: Vector, pointing_direction: Vector, user_render_targets: list[type[Detector]] = None):
         '''
         Parameters:
+            _data (Vector): Detector's accumulated data, called directly from within `Scene`
             position (Vector): Detector's absolute position in 3D space
             width (float): Detector width in pixels
             height (float): Detector height in pixels
@@ -20,6 +23,7 @@ class Detector(ABC):
         self.width = width
         self.height = height
         self.pointing_direction = pointing_direction.norm()
+        self.render_target = RenderTarget(self, user_render_targets)
 
     @abstractmethod
     def _reflection_model(  self, 
@@ -46,6 +50,19 @@ class Detector(ABC):
         pass
 
     @abstractmethod
+    def _transmission_model(self, 
+                            element: Element,
+                            intersection_point: Vector,
+                            surface_normal_at_intersection: Vector, 
+                            ray_travel_distance_refract: float):
+        
+        '''
+        Support for multiple sources should not be involved here, as rays incident on the same point
+        only generate the same transmitted ray if those sources occupy the same space, which is impossible.
+        '''
+        pass
+
+    @abstractmethod
     def view_data(self):
         '''
         Perform any final processing and return data to user
@@ -61,14 +78,29 @@ class PowerMeter(Detector):
 
     def _reflection_model(self):
         raise NotImplementedError(f"Method not yet implementated in {self.__class__}")
+    
+    def _transmission_model(self):
+        raise NotImplementedError(f"Method not yet implementated in {self.__class__}")
 
     def view_data(self):
         raise NotImplementedError(f"Method not yet implementated in {self.__class__}")
+    
+
+class PathLength(Detector):
+    pass
+
+
+class PolarizationAmplitude(Detector):
+    pass
+
+
+class PolarizationAngle(Detector):
+    pass
 
 
 class Camera(Detector):
     '''
-    Simple simulated camera using Phong shading for pixels.
+    Simple simulated camera using Blinn-Phong shading for pixels.
 
     NOTE    elements must include `user_params={'specular': s, 'n_s': n}`
             where s is a float and n is a float
@@ -88,21 +120,29 @@ class Camera(Detector):
             direction_to_source_unit = v['direction_to_source_unit']
             intersection_point_illuminated = v['intersection_point_illuminated']
 
-            # lambertian diffuse shading. See Section 5.2, Real Time Rendering, Akenine-Moller et al., 2018
+            # lambertian diffuse shading
+            # REF: [Akenine-Moller et al., 2018, Real Time Rendering, {Section: 5.2}]
             dot_product_clamped = np.maximum(surface_normal_at_intersection.dot(direction_to_source_unit), 0)
             lambertian_diffuse_shading = element.surface_color(intersection_point) * dot_product_clamped
 
-            # blinn-phong spectral shading. See Section 33.1, Learning OpenGL - Graphics Programming, de Vries, 2020
+            # blinn-phong spectral shading
+            # REF: [de Vries, 2020, Learning OpenGL - Graphics Programming, {Section: 33.1}]
             phong = np.clip(surface_normal_at_intersection.dot((direction_to_source_unit + direction_to_origin_unit).norm()), 0, 1)
             phong_specular_shading = element.specular * np.power(phong, element.n_s)
 
             s += (lambertian_diffuse_shading + phong_specular_shading) * intersection_point_illuminated
 
         return self.ambient_dark + s
+    
+    def _transmission_model(self, element, intersection_point, surface_normal_at_intersection, ray_travel_distance_refract):
+        # lambertian diffuse shading gets included in this ray upon reflection from the next object
+        # as well as this object, assuming that the ray both transmits and reflects
+        beers_law_attenuation = np.exp(element.absorption_color * -ray_travel_distance_refract)
+        return self.ambient_dark + beers_law_attenuation
 
     def view_data(self):
         '''
-        Pixel data is a color
+        Pixel values in `_data` represent colors
         '''
         rgb = [
             Image.fromarray(

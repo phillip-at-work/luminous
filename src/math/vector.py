@@ -119,4 +119,9 @@ class Vector():
                         return Vector(inputs[0].x ** inputs[1], inputs[0].y ** inputs[1], inputs[0].z ** inputs[1])
                     elif isinstance(inputs[1], Vector) and isinstance(inputs[0], (np.ndarray, numbers.Number)):
                         return Vector(inputs[1].x ** inputs[0], inputs[1].y ** inputs[0], inputs[1].z ** inputs[0])
+            elif ufunc == np.exp:
+                if len(inputs) == 1:
+                    input_vector = inputs[0]
+                    return Vector(np.exp(input_vector.x), np.exp(input_vector.y), np.exp(input_vector.z))
+
         return NotImplemented

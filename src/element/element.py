@@ -20,7 +20,7 @@ class Element(ABC):
         self.refractive_index = refractive_index
         self.user_params = user_params or dict()
 
-        # mege `user_params` into instance
+        # merge `user_params` into instance
         for key, value in self.user_params.items():
             if hasattr(self, key):
                 raise AttributeError(f"Attribute '{key}' already exists in the instance and cannot be overwritten.")

@@ -19,7 +19,6 @@ def parse_additional_info(info_str):
 def compile_references(code_directory, output_file):
 
     ref_pattern = re.compile(r'# REF: \[(.*?)\]')
-
     func_pattern = re.compile(r'^\s*def\s+(\w+)\s*\(')
     class_pattern = re.compile(r'^\s*class\s+(\w+)\s*')
 
@@ -27,7 +26,7 @@ def compile_references(code_directory, output_file):
 
     for root, _, files in os.walk(code_directory):
         for file in files:
-            if file.endswith('.py'):
+            if file.endswith('.py') and file != 'compile_references.py':  # Exclude this script
                 with open(os.path.join(root, file), 'r') as f:
                     current_function = None
                     current_class = None

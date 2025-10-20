@@ -7,6 +7,7 @@ import atexit
 from ..math.vector import Vector
 from ..math.tools import extract
 from ..detector.detector import Detector
+from ..detector.render_targets import RenderTarget
 from ..element.element import Element
 from ..source.source import Source
 from luminous.src.utilities.ray_debugger import NullRayDebugger, ConcreteRayDebugger
@@ -121,6 +122,9 @@ class Scene:
         # TODO re-work as distinct processes or threads
         for detector in self.detectors:
 
+            # TODO
+            # RenderTarget(detector)._enqueue_implicit_detector(Polarization)
+
             detector_pixels: Vector = self.create_screen_coord(detector.width, detector.height, detector.pointing_direction, detector.position)
             pixel_incident_rays: Vector = self.compute_ray_directions(detector, detector_pixels)
 
@@ -232,6 +236,12 @@ class Scene:
                         ray_start_position_refract: Vector = origin_new.extract(hit_refract)
                         incident_ray_refract: Vector = direction_new.extract(hit_refract)
 
+                        ray_data = RenderTarget(detector)._transmission_model(  element,
+                                                                                intersection_point,
+                                                                                surface_normal_at_intersection,
+                                                                                ray_travel_distance_refract)
+                        # rays += ray_data.place(valid_transmission_indices) # TODO integrate transmission data into recursion
+
                         intersection_point_new: Vector = ray_start_position_refract + incident_ray_refract * ray_travel_distance_refract
                         surface_normal_at_intersection_new: Vector = element.compute_outward_normal(intersection_point_new)
 
@@ -277,11 +287,11 @@ class Scene:
                         self.ray_debugger.add_vector(start_point=illuminated_intersections, end_point=intersection_to_source, color=(255,0,255))
 
                 # detect
-                ray_data = detector._reflection_model(element,
-                                                      intersection_point,
-                                                      surface_normal_at_intersection, 
-                                                      direction_to_origin_unit, 
-                                                      self.intersection_map)
+                ray_data = RenderTarget(detector)._reflection_model(element,
+                                                                    intersection_point,
+                                                                    surface_normal_at_intersection,
+                                                                    direction_to_origin_unit,
+                                                                    self.intersection_map)
                 
                 self.intersection_map.clear()
 
@@ -296,7 +306,7 @@ class Scene:
     
     def _total_internal_reflection(self, incident_ray: Vector, surface_normal: Vector, n1: float, n2: float) -> bool:
         # Determine if incident angle >= critical angle
-        # See Reflections and Refractions in Ray Tracing, 2006, Greve
+        # REF: [de Greve, 2006, Reflections and Refractions in Ray Tracing]
         if n2 >= n1:
             return np.zeros(incident_ray.x.shape, dtype=bool)
         
@@ -307,11 +317,13 @@ class Scene:
         return theta_i > critical_angle
 
     def _reflected_ray(self, incident_ray: Vector, surface_normal_at_intersection: Vector) -> Vector:
-        # Reflected ray unit vector. See Reflections and Refractions in Ray Tracing, 2006, Greve
+        # Reflected ray unit vector
+        # REF: [de Greve, 2006, Reflections and Refractions in Ray Tracing]
         return incident_ray - surface_normal_at_intersection * 2 * incident_ray.dot(surface_normal_at_intersection)
     
     def _transmitted_ray(self, incident_ray: Vector, surface_normal: Vector, n1: float, n2: float) -> Vector:
-        # Refracted ray unit vector. See Reflections and Refractions in Ray Tracing, 2006, Greve
+        # Refracted ray unit vector
+        # REF: [de Greve, 2006, Reflections and Refractions in Ray Tracing]
         n = n1 / n2
         cos_theta_i = -incident_ray.dot(surface_normal)
         sin_theta_t_squared = (n ** 2) * (1 - cos_theta_i**2)
@@ -323,7 +335,7 @@ class Scene:
     
     def _reflection_transmission_weights(self, incident_ray: Vector, surface_normal: Vector, n1: float, n2: float):
         # Ray weightings for reflected and refracted components assuming unpolarized source (fresnel equations)
-        # See Reflections and Refractions in Ray Tracing, 2006, Greve
+        # REF: [de Greve, 2006, Reflections and Refractions in Ray Tracing]
         n = n1 / n2
         cos_theta_i = -incident_ray.dot(surface_normal)
         sin_theta_t_squared = (n ** 2) * (1 - cos_theta_i**2)

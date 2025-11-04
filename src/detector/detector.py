@@ -52,9 +52,8 @@ class Detector(ABC):
     @abstractmethod
     def _transmission_model(self, 
                             element: Element,
-                            intersection_point: Vector,
-                            surface_normal_at_intersection: Vector, 
-                            ray_travel_distance_refract: float):
+                            initial_intersection: Vector,
+                            final_intersection: Vector):
         
         '''
         Support for multiple sources should not be involved here, as rays incident on the same point
@@ -134,11 +133,14 @@ class Camera(Detector):
 
         return self.ambient_dark + s
     
-    def _transmission_model(self, element, intersection_point, surface_normal_at_intersection, ray_travel_distance_refract):
-        # lambertian diffuse shading gets included in this ray upon reflection from the next object
-        # as well as this object, assuming that the ray both transmits and reflects
-        beers_law_attenuation = np.exp(element.absorption_color * -ray_travel_distance_refract)
-        return self.ambient_dark + beers_law_attenuation
+    def _transmission_model(self, element, initial_intersection, final_intersection):
+
+        # TODO this doesn't really diminish the part of the image associated with rays that transmit through en element. so, doesn't really make sense.
+        # pretty sure I could create a new `element.intersect` kind of method that returns an array of elements to where those subsequent rays (exiting the volume)
+        # will intersect (rather than a point of intersection). which would provide feedback about the type of color tinting required within the `_transmission_model`
+        internal_travel_distance: Vector = (final_intersection - initial_intersection).magnitude() 
+        beers_law_attenuation = element.surface_color(initial_intersection) * np.exp(-internal_travel_distance)
+        return beers_law_attenuation
 
     def view_data(self):
         '''

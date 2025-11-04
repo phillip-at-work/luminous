@@ -59,14 +59,14 @@ class RenderTarget:
         # Call _reflection_model method for the main detector
         return self.detector._reflection_model(element, intersection_point, surface_normal_at_intersection, direction_to_origin_unit, intersection_map)
 
-    def _transmission_model(self, element, intersection_point: Vector, surface_normal_at_intersection: Vector, ray_travel_distance_refract: float) -> Vector:
+    def _transmission_model(self, element, initial_intersection, final_intersection: float) -> Vector:
         # Call _transmission_model method for each render_target
         for target_cls in self.render_targets:
             target_instance = self._data[target_cls]
-            target_instance._transmission_model(element, intersection_point, surface_normal_at_intersection, ray_travel_distance_refract)
+            target_instance._transmission_model(element, initial_intersection, final_intersection)
         
         # Call _transmission_model method for the main detector
-        return self.detector._transmission_model(element, intersection_point, surface_normal_at_intersection, ray_travel_distance_refract)
+        return self.detector._transmission_model(element, initial_intersection, final_intersection)
 
     def get_data(self, target_cls: Type[Detector]):
         # use this method to recover data from implicit detectors

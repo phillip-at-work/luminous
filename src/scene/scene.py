@@ -138,18 +138,7 @@ class Scene:
 
     def _recursive_trace(self, detector: Detector, origin: Vector, direction: Vector, elements: list['Element'], bounce: int):
 
-        ''' 
-        distances between origin and element surface, along `direction` vector
-        len(distances) = number of elements in scene
-        len(distances)[n] = number of rays
-        '''
         distances: list[NDArray[np.float64]] = [element.intersect(origin, direction) for element in elements]
-
-        '''
-        Find element-wise minimum for rays
-        e.g., one ray may intersect two elements. if so, count nearest hit as the true hit.
-        len(minimum_distances) == numer of rays, where each value is the smallest distance from each sub-list of `distances`
-        '''
         minimum_distances: NDArray[np.float64] = reduce(np.minimum, distances)
 
         rays = Vector(0, 0, 0)
@@ -158,11 +147,6 @@ class Scene:
 
             self.ray_debugger.add_point(element.center, color=(0,255,0))
 
-            '''
-            len(hit) == len(minimum_distances)
-            for each boolean in this array:
-            if `minimum_distances != FARAWAY`, and, for the `distance` in `distances`, if that `distance` is `minimum_distances[n]`, then this ray intersects this `element`
-            '''
             hit: NDArray[np.bool_] = (minimum_distances != INFINITE) & (distance == minimum_distances)
 
             if np.any(hit):
@@ -174,8 +158,42 @@ class Scene:
                 intersection_point: Vector = ray_start_position + incident_ray * ray_travel_distance
                 surface_normal_at_intersection: Vector = element.compute_outward_normal(intersection_point)
 
-                # normal vector
-                # self.ray_debugger.add_vector(start_point=intersection_point, end_point=intersection_point+surface_normal_at_intersection, color=(100, 100, 100))
+                intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * 0.0001
+                direction_to_origin_unit: Vector = (detector.position - intersection_point).norm()
+
+                for source in self.sources:
+
+                    direction_to_source: Vector = source.position - intersection_point_with_standoff
+                    direction_to_source_unit: Vector = direction_to_source.norm()
+                    intersections_blocking_source: list[NDArray[np.float64]] = [element.intersect(intersection_point_with_standoff, direction_to_source_unit) for element in elements]
+                    minimum_distances_with_standoff: NDArray[np.float64] = reduce(np.minimum, intersections_blocking_source)
+                    distances_to_source = direction_to_source.magnitude()
+                    intersection_point_illuminated: NDArray[np.bool_] = minimum_distances_with_standoff >= distances_to_source
+
+                    self.intersection_map.append({'source': source, 'direction_to_source_unit': direction_to_source_unit, 'intersection_point_illuminated': intersection_point_illuminated})
+
+                    if not element.transparent:
+                        illuminated_intersections: Vector = intersection_point.extract(intersection_point_illuminated)
+                        direction_to_source_minima: Vector = direction_to_source.extract(intersection_point_illuminated)
+                        intersection_to_source: Vector = illuminated_intersections + direction_to_source_minima
+
+                        # to elements
+                        self.ray_debugger.add_vector(start_point=ray_start_position, end_point=intersection_point_with_standoff, color=(0,0,255))
+                        # to source
+                        self.ray_debugger.add_vector(start_point=illuminated_intersections, end_point=intersection_to_source, color=(255,0,255))
+
+                ray_data = RenderTarget(detector)._reflection_model(element,
+                                                                    intersection_point,
+                                                                    surface_normal_at_intersection,
+                                                                    direction_to_origin_unit,
+                                                                    self.intersection_map)
+                
+                self.intersection_map.clear()
+
+                # reflect
+                if bounce < 2:
+                    reflected_ray = self._reflected_ray(incident_ray, surface_normal_at_intersection)
+                    ray_data += self._recursive_trace(detector, intersection_point_with_standoff, reflected_ray, elements, bounce + 1)
 
                 if element.transparent:
 
@@ -212,8 +230,6 @@ class Scene:
                         ray_travel_distance_transmission: NDArray[np.float64] = element.intersect(intersection_point_with_standoff_inside, incident_ray_within_volume)
                         full_transmitted_ray_within_volume = initial_intersection_within_volume + incident_ray_within_volume * ray_travel_distance_transmission
                         
-                        # normal vector
-                        # self.ray_debugger.add_vector(start_point=initial_intersection_within_volume, end_point=initial_intersection_within_volume+surface_normal_at_intersection_inside, color=(0,255,255))
                         # transmitted ray
                         self.ray_debugger.add_vector(start_point=intersection_point_with_standoff_inside, end_point=full_transmitted_ray_within_volume, color=(255,255,0))
 
@@ -222,83 +238,14 @@ class Scene:
                         surface_normal_at_intersection_from_volume_outward: Vector = element.compute_outward_normal(full_transmitted_ray_within_volume)
                         origin_new = full_transmitted_ray_within_volume + surface_normal_at_intersection_from_volume_outward * 0.001
 
-                        # normal vector
-                        # self.ray_debugger.add_vector(start_point=origin_new, end_point=origin_new+surface_normal_at_intersection_from_volume, color=(100,255,100))
-                        # normal vector
-                        # self.ray_debugger.add_vector(start_point=origin_new, end_point=origin_new+direction_new, color=(255,123,0))
-
-                        distances_refract: list[NDArray[np.float64]] = [element.intersect(origin_new, direction_new) for element in elements]
-                        distance_refract: NDArray[np.float64] = reduce(np.minimum, distances_refract)
-
-                        hit_refract: NDArray[np.bool_] = distance_refract != INFINITE
-
-                        ray_travel_distance_refract: NDArray[np.float64] = extract(hit_refract, distance_refract)
-                        ray_start_position_refract: Vector = origin_new.extract(hit_refract)
-                        incident_ray_refract: Vector = direction_new.extract(hit_refract)
-
-                        ray_data = RenderTarget(detector)._transmission_model(  element,
-                                                                                intersection_point,
-                                                                                surface_normal_at_intersection,
-                                                                                ray_travel_distance_refract)
-                        # rays += ray_data.place(valid_transmission_indices) # TODO integrate transmission data into recursion
-
-                        intersection_point_new: Vector = ray_start_position_refract + incident_ray_refract * ray_travel_distance_refract
-                        surface_normal_at_intersection_new: Vector = element.compute_outward_normal(intersection_point_new)
-
-                        intersection_point.x[hit_refract] = intersection_point_new.x
-                        intersection_point.y[hit_refract] = intersection_point_new.y
-                        intersection_point.z[hit_refract] = intersection_point_new.z
-
-                        # to elements
-                        self.ray_debugger.add_vector(start_point=ray_start_position_refract, end_point=intersection_point_new, color=(0,0,255))
-
-                        surface_normal_at_intersection.x[hit_refract] = surface_normal_at_intersection_new.x
-                        surface_normal_at_intersection.y[hit_refract] = surface_normal_at_intersection_new.y
-                        surface_normal_at_intersection.z[hit_refract] = surface_normal_at_intersection_new.z
+                        ray_data += RenderTarget(detector)._transmission_model( element,
+                                                                                initial_intersection_within_volume,
+                                                                                full_transmitted_ray_within_volume)
+                        
+                        ray_data += self._recursive_trace(detector, origin_new, direction_new, elements, bounce)
 
                     # if np.all(reflection_weight == 0):
                     #     continue
-
-                intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * 0.0001
-                direction_to_origin_unit: Vector = (detector.position - intersection_point).norm()
-
-                for source in self.sources:
-
-                    direction_to_source: Vector = source.position - intersection_point_with_standoff
-                    direction_to_source_unit: Vector = direction_to_source.norm()
-                    intersections_blocking_source: list[NDArray[np.float64]] = [element.intersect(intersection_point_with_standoff, direction_to_source_unit) for element in elements]
-                    minimum_distances_with_standoff: NDArray[np.float64] = reduce(np.minimum, intersections_blocking_source)
-                    distances_to_source = direction_to_source.magnitude()
-                    intersection_point_illuminated: NDArray[np.bool_] = minimum_distances_with_standoff >= distances_to_source
-
-                    self.intersection_map.append({'source': source, 'direction_to_source_unit': direction_to_source_unit, 'intersection_point_illuminated': intersection_point_illuminated})
-
-                    # TODO probably some Vector values passed into color model must undergo extraction with `intersection_point_illuminated`
-                    # as I do for ray debugger, but not for plotted data
-
-                    if not element.transparent:
-                        illuminated_intersections: Vector = intersection_point.extract(intersection_point_illuminated)
-                        direction_to_source_minima: Vector = direction_to_source.extract(intersection_point_illuminated)
-                        intersection_to_source: Vector = illuminated_intersections + direction_to_source_minima
-
-                        # to elements
-                        self.ray_debugger.add_vector(start_point=ray_start_position, end_point=intersection_point_with_standoff, color=(0,0,255))
-                        # to source
-                        self.ray_debugger.add_vector(start_point=illuminated_intersections, end_point=intersection_to_source, color=(255,0,255))
-
-                # detect
-                ray_data = RenderTarget(detector)._reflection_model(element,
-                                                                    intersection_point,
-                                                                    surface_normal_at_intersection,
-                                                                    direction_to_origin_unit,
-                                                                    self.intersection_map)
-                
-                self.intersection_map.clear()
-
-                # reflect
-                if bounce < 2:
-                    reflected_ray = self._reflected_ray(incident_ray, surface_normal_at_intersection)
-                    ray_data += self._recursive_trace(detector, intersection_point_with_standoff, reflected_ray, elements, bounce + 1)
 
                 rays += ray_data.place(hit)
 

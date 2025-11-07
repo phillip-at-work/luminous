@@ -172,15 +172,14 @@ class Scene:
 
                     self.intersection_map.append({'source': source, 'direction_to_source_unit': direction_to_source_unit, 'intersection_point_illuminated': intersection_point_illuminated})
 
-                    if not element.transparent:
-                        illuminated_intersections: Vector = intersection_point.extract(intersection_point_illuminated)
-                        direction_to_source_minima: Vector = direction_to_source.extract(intersection_point_illuminated)
-                        intersection_to_source: Vector = illuminated_intersections + direction_to_source_minima
+                    illuminated_intersections: Vector = intersection_point.extract(intersection_point_illuminated)
+                    direction_to_source_minima: Vector = direction_to_source.extract(intersection_point_illuminated)
+                    intersection_to_source: Vector = illuminated_intersections + direction_to_source_minima
 
-                        # to elements
-                        self.ray_debugger.add_vector(start_point=ray_start_position, end_point=intersection_point_with_standoff, color=(0,0,255))
-                        # to source
-                        self.ray_debugger.add_vector(start_point=illuminated_intersections, end_point=intersection_to_source, color=(255,0,255))
+                    # to elements
+                    self.ray_debugger.add_vector(start_point=ray_start_position, end_point=intersection_point_with_standoff, color=(0,0,255))
+                    # to source
+                    self.ray_debugger.add_vector(start_point=illuminated_intersections, end_point=intersection_to_source, color=(255,0,255))
 
                 ray_data = RenderTarget(detector)._reflection_model(element,
                                                                     intersection_point,

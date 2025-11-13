@@ -16,7 +16,7 @@ An object-oriented ray trace library with a scriptable API. See repo `https://gi
 - add optional ray time of flight model
 - atmospheric models/ media in aggregate
 - add triangular mesh elements (arbitrary closed polygons, possibly as STLs)
-- DONE. Camera object basic refraction model consistent
+- DONE. Camera object basic refraction and reflection model
 - add Lens element defined by two radii and center thickness
 - add raytrace animation option for detectors, elements, and sources. to support time-functional emissions (radar).
 - add concrete implementation for PowerMeter (Detector ABC)

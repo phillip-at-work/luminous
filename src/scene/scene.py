@@ -169,13 +169,12 @@ class Scene:
                         )
 
                     tir = self._total_internal_reflection(incident_ray_within_volume, surface_normal_at_intersection, self.refractive_index, element.refractive_index)
+                    reflection_weight = np.ones(tir.shape, dtype=np.float32)
+                    transmission_weight = np.ones(tir.shape, dtype=np.float32)
 
                     if not np.all(tir):
 
                         # at least one ray transmits. update reflection and transmission weights.
-
-                        reflection_weight = np.zeros(tir.shape, dtype=np.float32)
-                        transmission_weight = np.zeros(tir.shape, dtype=np.float32)
                         
                         non_tir_indices = np.logical_not(tir)
                         reflection_weight[non_tir_indices], transmission_weight[non_tir_indices] = self._reflection_transmission_weights(
@@ -205,10 +204,10 @@ class Scene:
                             surface_normal_at_intersection_from_volume_outward: Vector = element.compute_outward_normal(full_transmitted_ray_within_volume)
                             origin_new = full_transmitted_ray_within_volume + surface_normal_at_intersection_from_volume_outward * 0.001
 
-                            # TODO transmission weight should be passed into the transmission model
                             ray_data = RenderTarget(detector)._transmission_model( element,
                                                                                     initial_intersection_within_volume,
-                                                                                    full_transmitted_ray_within_volume)
+                                                                                    full_transmitted_ray_within_volume,
+                                                                                    transmission_weight)
                             
                             ray_data += self._recursive_trace(detector, origin_new, direction_new, elements, bounce)
 
@@ -216,21 +215,42 @@ class Scene:
                         if np.any(valid_reflection_indices):
 
                             # `element` is transparent. reflect (weighted) rays.
-
-                            # TODO reflection model weights should default to 100%. but get a passed value when weights are computed, associated with a translucent object transmission                            
-                            ray_data += self._scene_reflection_sequence(detector, bounce, element, ray_start_position, incident_ray, intersection_point, surface_normal_at_intersection)
+                          
+                            ray_data += self._scene_reflection_sequence(detector, 
+                                                                        bounce, 
+                                                                        element, 
+                                                                        ray_start_position, 
+                                                                        incident_ray, 
+                                                                        intersection_point, 
+                                                                        surface_normal_at_intersection, 
+                                                                        reflection_weight)
 
                     elif np.all(tir):
 
                         # `element` is transparent and no rays transmit. total internal reflection.
 
-                        ray_data = self._scene_reflection_sequence(detector, bounce, element, ray_start_position, incident_ray, intersection_point, surface_normal_at_intersection)
+                        ray_data = self._scene_reflection_sequence(detector, 
+                                                                   bounce, 
+                                                                   element, 
+                                                                   ray_start_position, 
+                                                                   incident_ray, 
+                                                                   intersection_point, 
+                                                                   surface_normal_at_intersection, 
+                                                                   reflection_weight)
 
                 elif not element.transparent:
 
                     # `element` is not transparent. reflect only.
 
-                    ray_data = self._scene_reflection_sequence(detector, bounce, element, ray_start_position, incident_ray, intersection_point, surface_normal_at_intersection)
+                    reflection_weight = np.ones(incident_ray.x.shape, dtype=np.int8)
+                    ray_data = self._scene_reflection_sequence(detector, 
+                                                               bounce, 
+                                                               element, 
+                                                               ray_start_position, 
+                                                               incident_ray, 
+                                                               intersection_point, 
+                                                               surface_normal_at_intersection, 
+                                                               reflection_weight)
 
                 # sum `rays` for a `hit`
 
@@ -238,7 +258,7 @@ class Scene:
 
         return rays
 
-    def _scene_reflection_sequence(self, detector, bounce, element, ray_start_position, incident_ray, intersection_point, surface_normal_at_intersection):
+    def _scene_reflection_sequence(self, detector, bounce, element, ray_start_position, incident_ray, intersection_point, surface_normal_at_intersection, reflection_weight):
 
         intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * 0.0001
         direction_to_origin_unit: Vector = (detector.position - intersection_point).norm()
@@ -266,7 +286,8 @@ class Scene:
                                                             intersection_point,
                                                             surface_normal_at_intersection,
                                                             direction_to_origin_unit,
-                                                            self.intersection_map)
+                                                            self.intersection_map,
+                                                            reflection_weight)
                     
         self.intersection_map.clear()
 

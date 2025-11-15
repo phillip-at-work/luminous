@@ -1,5 +1,7 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING, Type
+from numpy.typing import NDArray
+import numpy as np
 from ..math.vector import Vector
 import importlib
 
@@ -50,23 +52,23 @@ class RenderTarget:
                 self.render_targets.remove(detector_cls)
             self.render_targets.insert(0, detector_cls)
 
-    def _reflection_model(self, element, intersection_point: Vector, surface_normal_at_intersection: Vector, direction_to_origin_unit: Vector, intersection_map: list[dict]) -> Vector:
+    def _reflection_model(self, element, intersection_point: Vector, surface_normal_at_intersection: Vector, direction_to_origin_unit: Vector, intersection_map: list[dict], reflection_weight: NDArray[np.number]) -> Vector:
         # Call _reflection_model method for each render_target
         for target_cls in self.render_targets:
             target_instance = self._data[target_cls]
-            target_instance._reflection_model(element, intersection_point, surface_normal_at_intersection, direction_to_origin_unit, intersection_map)
+            target_instance._reflection_model(element, intersection_point, surface_normal_at_intersection, direction_to_origin_unit, intersection_map, reflection_weight)
         
         # Call _reflection_model method for the main detector
-        return self.detector._reflection_model(element, intersection_point, surface_normal_at_intersection, direction_to_origin_unit, intersection_map)
+        return self.detector._reflection_model(element, intersection_point, surface_normal_at_intersection, direction_to_origin_unit, intersection_map, reflection_weight)
 
-    def _transmission_model(self, element, initial_intersection, final_intersection: float) -> Vector:
+    def _transmission_model(self, element, initial_intersection: Vector, final_intersection: Vector, transmission_weight: NDArray[np.number]) -> Vector:
         # Call _transmission_model method for each render_target
         for target_cls in self.render_targets:
             target_instance = self._data[target_cls]
-            target_instance._transmission_model(element, initial_intersection, final_intersection)
+            target_instance._transmission_model(element, initial_intersection, final_intersection, transmission_weight)
         
         # Call _transmission_model method for the main detector
-        return self.detector._transmission_model(element, initial_intersection, final_intersection)
+        return self.detector._transmission_model(element, initial_intersection, final_intersection, transmission_weight)
 
     def get_data(self, target_cls: Type[Detector]):
         # use this method to recover data from implicit detectors

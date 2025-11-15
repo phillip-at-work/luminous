@@ -1,6 +1,7 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 import numpy as np
+from numpy.typing import NDArray
 from PIL import Image
 
 from ..math.vector import Vector
@@ -31,7 +32,8 @@ class Detector(ABC):
                             intersection_point: Vector,
                             surface_normal_at_intersection: Vector, 
                             direction_to_origin_unit: Vector, 
-                            intersection_map: list[dict]) -> Vector:
+                            intersection_map: list[dict],
+                            reflection_weights: NDArray[np.number]) -> Vector:
         '''
         Recursively compile data for detector model
 
@@ -46,6 +48,7 @@ class Detector(ABC):
             surface_normal_at_intersection (Vector): Normal vector with respect to element's surface at point of intersection
             direction_to_origin_unit (Vector): Source direction for ray(s). Note that because rays are traced in reverse, these rays originate from the Detector (not the Source) or the previous reflection
             intersection_map (list[dict]): A list of dicts representing how each source interacts with `intersection_point`. Each dict in the list contains the following keys: 'source' represents one Source object, 'direction_to_source_unit' is the Vector direction from `intersection_point` to Source, 'intersection_point_illuminated' is a numpy array of booleans indicating if corresponding rays are illuminated by that Source, else, are in a shadow
+            reflection_weight (NDArray[np.number]): A numpy array of numbers where each value is [0, 1]. Indicates how much of the antecedent ray reflects (versus transmits).
         '''
         pass
 
@@ -53,7 +56,10 @@ class Detector(ABC):
     def _transmission_model(self, 
                             element: Element,
                             initial_intersection: Vector,
-                            final_intersection: Vector):
+                            final_intersection: Vector,
+                            transmission_weights: NDArray[np.number]):
+        
+        # TODO document parameters
         
         '''
         Support for multiple sources should not be involved here, as rays incident on the same point
@@ -110,9 +116,11 @@ class Camera(Detector):
         # unilluminated pixels display this noise floor
         self.ambient_dark = Vector(0, 0, 0)
 
-    def _reflection_model(self, element, intersection_point, surface_normal_at_intersection, direction_to_origin_unit, intersection_map):
+    def _reflection_model(self, element, intersection_point, surface_normal_at_intersection, direction_to_origin_unit, intersection_map, reflection_weights):
 
         s = Vector(0,0,0)
+
+        # TODO do something with weights
 
         for v in intersection_map:
 
@@ -133,11 +141,13 @@ class Camera(Detector):
 
         return self.ambient_dark + s
     
-    def _transmission_model(self, element, initial_intersection, final_intersection):
+    def _transmission_model(self, element, initial_intersection, final_intersection, transmission_weights):
 
         # TODO this doesn't really diminish the part of the image associated with rays that transmit through en element. so, doesn't really make sense.
         # pretty sure I could create a new `element.intersect` kind of method that returns an array of elements to where those subsequent rays (exiting the volume)
         # will intersect (rather than a point of intersection). which would provide feedback about the type of color tinting required within the `_transmission_model`
+
+        # TODO do something with weights
         internal_travel_distance: Vector = (final_intersection - initial_intersection).magnitude() 
         beers_law_attenuation = element.surface_color(initial_intersection) * np.exp(-internal_travel_distance)
         return beers_law_attenuation

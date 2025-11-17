@@ -160,6 +160,10 @@ class Scene:
 
                 if element.transparent:
 
+                    # TODO this logic to be revamped:
+                    # 1. ray undergoes reflection from face of transparent element. no transmission. only if reflecting path is in view of source.
+                    # 2. ray refracts. e.g., scene -> element boundry. check occurs to see how much of the ray reflected in the reverse travel direction.
+
                     # compute the transmission in reverse, e.g., from Scene into Element volume
                     incident_ray_within_volume = self._transmitted_ray(
                             incident_ray,
@@ -168,6 +172,7 @@ class Scene:
                             element.refractive_index
                         )
 
+                    # TODO `_total_internal_reflection` for polarized light
                     tir = self._total_internal_reflection(incident_ray_within_volume, surface_normal_at_intersection, self.refractive_index, element.refractive_index)
                     reflection_weight = np.ones(tir.shape, dtype=np.float32)
                     transmission_weight = np.ones(tir.shape, dtype=np.float32)
@@ -177,6 +182,7 @@ class Scene:
                         # at least one ray transmits. update reflection and transmission weights.
                         
                         non_tir_indices = np.logical_not(tir)
+                        # TODO `_reflection_transmission_weights` for polarized light
                         reflection_weight[non_tir_indices], transmission_weight[non_tir_indices] = self._reflection_transmission_weights(
                             incident_ray.extract(non_tir_indices),
                             surface_normal_at_intersection.extract(non_tir_indices),
@@ -223,7 +229,8 @@ class Scene:
                                                                         incident_ray, 
                                                                         intersection_point, 
                                                                         surface_normal_at_intersection, 
-                                                                        reflection_weight)
+                                                                        reflection_weight,
+                                                                        incident_ray_within_element=True)
 
                     elif np.all(tir):
 
@@ -236,7 +243,8 @@ class Scene:
                                                                    incident_ray, 
                                                                    intersection_point, 
                                                                    surface_normal_at_intersection, 
-                                                                   reflection_weight)
+                                                                   reflection_weight,
+                                                                   incident_ray_within_element=True)
 
                 elif not element.transparent:
 
@@ -250,7 +258,8 @@ class Scene:
                                                                incident_ray, 
                                                                intersection_point, 
                                                                surface_normal_at_intersection, 
-                                                               reflection_weight)
+                                                               reflection_weight,
+                                                               incident_ray_within_element=False)
 
                 # sum `rays` for a `hit`
 
@@ -258,7 +267,9 @@ class Scene:
 
         return rays
 
-    def _scene_reflection_sequence(self, detector, bounce, element, ray_start_position, incident_ray, intersection_point, surface_normal_at_intersection, reflection_weight):
+    def _scene_reflection_sequence(self, detector, bounce, element, ray_start_position, incident_ray, intersection_point, surface_normal_at_intersection, reflection_weight, incident_ray_within_element):
+
+        # TODO if `incident_ray_within_element`, apply `_transmission_model`
 
         intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * 0.0001
         direction_to_origin_unit: Vector = (detector.position - intersection_point).norm()

@@ -158,22 +158,35 @@ class Scene:
                 intersection_point: Vector = ray_start_position + incident_ray * ray_travel_distance
                 surface_normal_at_intersection: Vector = element.compute_outward_normal(intersection_point)
 
+                # surface reflection
+
+                ray_data = self._scene_reflection_sequence(detector, 
+                                                            bounce, 
+                                                            element, 
+                                                            ray_start_position, 
+                                                            incident_ray, 
+                                                            intersection_point, 
+                                                            surface_normal_at_intersection, 
+                                                            reflection_weight=np.ones(incident_ray.x.shape, dtype=np.int8),
+                                                            incident_ray_within_element=False)
+
                 if element.transparent:
 
                     # TODO this logic to be revamped:
                     # 1. ray undergoes reflection from face of transparent element. no transmission. only if reflecting path is in view of source.
                     # 2. ray refracts. e.g., scene -> element boundry. check occurs to see how much of the ray reflected in the reverse travel direction.
+                    #
+                    # existing logic assume forward transmitting rays, which is incorrect
 
                     # compute the transmission in reverse, e.g., from Scene into Element volume
-                    incident_ray_within_volume = self._transmitted_ray(
+                    transmitted_ray = self._transmitted_ray(
                             incident_ray,
                             surface_normal_at_intersection,
                             self.refractive_index,
                             element.refractive_index
                         )
 
-                    # TODO `_total_internal_reflection` for polarized light
-                    tir = self._total_internal_reflection(incident_ray_within_volume, surface_normal_at_intersection, self.refractive_index, element.refractive_index)
+                    tir = self._total_internal_reflection(transmitted_ray, surface_normal_at_intersection, self.refractive_index, element.refractive_index)
                     reflection_weight = np.ones(tir.shape, dtype=np.float32)
                     transmission_weight = np.ones(tir.shape, dtype=np.float32)
 
@@ -196,11 +209,11 @@ class Scene:
                             # `element` is transparent. transmit (weighted) rays.
 
                             initial_intersection_within_volume = intersection_point.extract(valid_transmission_indices)
-                            incident_ray_within_volume = incident_ray_within_volume.extract(valid_transmission_indices)
+                            transmitted_ray = transmitted_ray.extract(valid_transmission_indices)
                             surface_normal_at_intersection_inside: Vector = element.compute_inward_normal(initial_intersection_within_volume)
                             intersection_point_with_standoff_inside = initial_intersection_within_volume + surface_normal_at_intersection_inside * 0.0001
-                            ray_travel_distance_transmission: NDArray[np.float64] = element.intersect(intersection_point_with_standoff_inside, incident_ray_within_volume)
-                            full_transmitted_ray_within_volume = initial_intersection_within_volume + incident_ray_within_volume * ray_travel_distance_transmission
+                            ray_travel_distance_transmission: NDArray[np.float64] = element.intersect(intersection_point_with_standoff_inside, transmitted_ray)
+                            full_transmitted_ray_within_volume = initial_intersection_within_volume + transmitted_ray * ray_travel_distance_transmission
                             
                             # transmitted ray
                             self.ray_debugger.add_vector(start_point=intersection_point_with_standoff_inside, end_point=full_transmitted_ray_within_volume, color=(255,255,0))
@@ -246,23 +259,7 @@ class Scene:
                                                                    reflection_weight,
                                                                    incident_ray_within_element=True)
 
-                elif not element.transparent:
-
-                    # `element` is not transparent. reflect only.
-
-                    reflection_weight = np.ones(incident_ray.x.shape, dtype=np.int8)
-                    ray_data = self._scene_reflection_sequence(detector, 
-                                                               bounce, 
-                                                               element, 
-                                                               ray_start_position, 
-                                                               incident_ray, 
-                                                               intersection_point, 
-                                                               surface_normal_at_intersection, 
-                                                               reflection_weight,
-                                                               incident_ray_within_element=False)
-
                 # sum `rays` for a `hit`
-
                 rays += ray_data.place(hit)
 
         return rays

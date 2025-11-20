@@ -132,9 +132,9 @@ class Scene:
             self.ray_debugger.add_vector(start_point=detector.position, end_point=detector_dir_translate, color=(255, 0, 0))
             self.ray_debugger.add_point(detector_pixels, color=(255,0,0))
 
-            detector._data = self._recursive_trace(detector=detector, origin=detector_pixels, direction=pixel_incident_rays, elements=self.elements, bounce=0)
+            detector._data = self._recursive_trace(detector=detector, origin=detector_pixels, direction=pixel_incident_rays, elements=self.elements)
 
-    def _recursive_trace(self, detector: Detector, origin: Vector, direction: Vector, elements: list['Element'], bounce: int):
+    def _recursive_trace(self, detector: Detector, origin: Vector, direction: Vector, elements: list['Element']):
 
         distances: list[NDArray[np.float64]] = [element.intersect(origin, direction) for element in elements]
         minimum_distances: NDArray[np.float64] = reduce(np.minimum, distances)
@@ -189,10 +189,8 @@ class Scene:
                             
                 self.intersection_map.clear()
 
-                # reflect
-                if bounce < 2:
-                    reflected_ray = self._reflected_ray(incident_ray, surface_normal_at_intersection)
-                    ray_data += self._recursive_trace(detector, intersection_point_with_standoff, reflected_ray, self.elements, bounce + 1)
+                reflected_ray = self._reflected_ray(incident_ray, surface_normal_at_intersection)
+                ray_data += self._recursive_trace(detector, intersection_point_with_standoff, reflected_ray, self.elements)
 
 
                 #
@@ -225,7 +223,7 @@ class Scene:
                                                                             full_transmitted_ray_within_volume,
                                                                             transmission_weight=np.ones(incident_ray.x.shape, dtype=np.int8))
                                                         
-                    ray_data += self._recursive_trace(detector, origin_new, direction_new, elements, bounce)
+                    ray_data += self._recursive_trace(detector, origin_new, direction_new, elements)
 
                 #
                 # sum `rays` for a `hit`

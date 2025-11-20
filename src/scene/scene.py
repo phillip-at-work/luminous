@@ -6,7 +6,8 @@ import atexit
 
 from ..math.vector import Vector
 from ..math.tools import extract
-from ..detector.detector import Detector, RayIsInsideElement
+from ..detector.detector import Detector
+from ..detector.ray_state import RayIsInsideElement
 from ..detector.render_targets import RenderTarget
 from ..element.element import Element
 from ..source.source import Source
@@ -122,8 +123,6 @@ class Scene:
         # TODO re-work as distinct processes or threads
         for detector in self.detectors:
 
-            RenderTarget(detector)._enqueue_implicit_detector(RayIsInsideElement)
-
             detector_pixels: Vector = self.create_screen_coord(detector.width, detector.height, detector.pointing_direction, detector.position)
             pixel_incident_rays: Vector = self.compute_ray_directions(detector, detector_pixels)
 
@@ -178,10 +177,8 @@ class Scene:
                     direction_to_source_minima: Vector = direction_to_source.extract(intersection_point_illuminated)
                     intersection_to_source: Vector = illuminated_intersections + direction_to_source_minima
 
-                    # to elements
-                    self.ray_debugger.add_vector(start_point=ray_start_position, end_point=intersection_point_with_standoff, color=(0,0,255))
-                    # to sources
-                    self.ray_debugger.add_vector(start_point=illuminated_intersections, end_point=intersection_to_source, color=(255,0,255))
+                    self.ray_debugger.add_vector(start_point=ray_start_position, end_point=intersection_point_with_standoff, color=(0,0,255)) # to elements
+                    self.ray_debugger.add_vector(start_point=illuminated_intersections, end_point=intersection_to_source, color=(255,0,255)) # to sources
 
                 ray_data = RenderTarget(detector)._reflection_model(element,
                                                                     intersection_point,
@@ -194,21 +191,16 @@ class Scene:
 
                 # reflect
                 if bounce < 2:
-                    # TODO bounce property should probably become a RenderTarget
                     reflected_ray = self._reflected_ray(incident_ray, surface_normal_at_intersection)
                     ray_data += self._recursive_trace(detector, intersection_point_with_standoff, reflected_ray, self.elements, bounce + 1)
 
 
                 #
-                # transmission (if transparent)
+                # transmission
                 #
 
                 if element.transparent:
 
-                    # TODO need to determine if ray is passing from scene into element, or vice versa
-                    # determines the order of indices of refraction in below calls
-
-                    # compute the transmission in reverse, e.g., from Scene into Element volume
                     transmitted_ray = self._transmitted_ray(
                             incident_ray,
                             surface_normal_at_intersection,
@@ -216,52 +208,24 @@ class Scene:
                             element.refractive_index
                         )
 
-                    tir = self._total_internal_reflection(transmitted_ray, surface_normal_at_intersection, self.refractive_index, element.refractive_index)
-                    reflection_weight = np.ones(tir.shape, dtype=np.float32)
-                    transmission_weight = np.ones(tir.shape, dtype=np.float32)
+                    surface_normal_at_intersection_inside: Vector = element.compute_inward_normal(intersection_point)
+                    intersection_point_with_standoff_inside = intersection_point + surface_normal_at_intersection_inside * 0.0001
+                    ray_travel_distance_transmission: NDArray[np.float64] = element.intersect(intersection_point_with_standoff_inside, transmitted_ray)
+                    full_transmitted_ray_within_volume = intersection_point + transmitted_ray * ray_travel_distance_transmission
+                    
+                    self.ray_debugger.add_vector(start_point=intersection_point_with_standoff_inside, end_point=full_transmitted_ray_within_volume, color=(255,255,0)) # transmitted ray
 
-                    if not np.all(tir):
+                    surface_normal_at_intersection_from_volume_inward: Vector = element.compute_inward_normal(full_transmitted_ray_within_volume)
+                    direction_new = self._transmitted_ray(full_transmitted_ray_within_volume, surface_normal_at_intersection_from_volume_inward, self.refractive_index, element.refractive_index)
+                    surface_normal_at_intersection_from_volume_outward: Vector = element.compute_outward_normal(full_transmitted_ray_within_volume)
+                    origin_new = full_transmitted_ray_within_volume + surface_normal_at_intersection_from_volume_outward * 0.001
 
-                        #
-                        # update ray transmission weights
-                        #
-                        
-                        non_tir_indices = np.logical_not(tir)
-                        reflection_weight[non_tir_indices], transmission_weight[non_tir_indices] = self._reflection_transmission_weights(
-                            incident_ray.extract(non_tir_indices),
-                            surface_normal_at_intersection.extract(non_tir_indices),
-                            self.refractive_index,
-                            element.refractive_index
-                        )
-
-                        valid_transmission_indices = transmission_weight > 0
-                        if np.any(valid_transmission_indices):
-
-                            #
-                            # transmit rays
-                            #
-
-                            initial_intersection_within_volume = intersection_point.extract(valid_transmission_indices)
-                            transmitted_ray = transmitted_ray.extract(valid_transmission_indices)
-                            surface_normal_at_intersection_inside: Vector = element.compute_inward_normal(initial_intersection_within_volume)
-                            intersection_point_with_standoff_inside = initial_intersection_within_volume + surface_normal_at_intersection_inside * 0.0001
-                            ray_travel_distance_transmission: NDArray[np.float64] = element.intersect(intersection_point_with_standoff_inside, transmitted_ray)
-                            full_transmitted_ray_within_volume = initial_intersection_within_volume + transmitted_ray * ray_travel_distance_transmission
-                            
-                            # transmitted ray
-                            self.ray_debugger.add_vector(start_point=intersection_point_with_standoff_inside, end_point=full_transmitted_ray_within_volume, color=(255,255,0))
-
-                            surface_normal_at_intersection_from_volume_inward: Vector = element.compute_inward_normal(full_transmitted_ray_within_volume)
-                            direction_new = self._transmitted_ray(full_transmitted_ray_within_volume, surface_normal_at_intersection_from_volume_inward, self.refractive_index, element.refractive_index)
-                            surface_normal_at_intersection_from_volume_outward: Vector = element.compute_outward_normal(full_transmitted_ray_within_volume)
-                            origin_new = full_transmitted_ray_within_volume + surface_normal_at_intersection_from_volume_outward * 0.001
-
-                            ray_data += RenderTarget(detector)._transmission_model( element,
-                                                                                    initial_intersection_within_volume,
-                                                                                    full_transmitted_ray_within_volume,
-                                                                                    transmission_weight)
-                            
-                            ray_data += self._recursive_trace(detector, origin_new, direction_new, elements, bounce)
+                    ray_data += RenderTarget(detector)._transmission_model( element,
+                                                                            intersection_point,
+                                                                            full_transmitted_ray_within_volume,
+                                                                            transmission_weight=np.ones(incident_ray.x.shape, dtype=np.int8))
+                                                        
+                    ray_data += self._recursive_trace(detector, origin_new, direction_new, elements, bounce)
 
                 #
                 # sum `rays` for a `hit`

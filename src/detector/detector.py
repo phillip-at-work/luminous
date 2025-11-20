@@ -76,21 +76,6 @@ class Detector(ABC):
         '''
         pass
 
-
-class RayIsInsideElement(Detector):
-    def __init__(self, width: int, height: int, position: Vector, pointing_direction: Vector):
-        super().__init__(width, height, position, pointing_direction)
-
-    def _reflection_model(self, element, intersection_point, surface_normal_at_intersection, direction_to_origin_unit, intersection_map, reflection_weights):
-        return np.zeros(intersection_point.x.shape, dtype=bool)
-    
-    def _transmission_model(self, element, initial_intersection, final_intersection, transmission_weights):
-        pass
-
-    def view_data(self):
-        pass
-
-
 class Camera(Detector):
     '''
     Simple simulated camera using Blinn-Phong shading for pixels.

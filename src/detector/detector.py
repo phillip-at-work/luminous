@@ -77,30 +77,18 @@ class Detector(ABC):
         pass
 
 
-class PowerMeter(Detector):
+class RayIsInsideElement(Detector):
     def __init__(self, width: int, height: int, position: Vector, pointing_direction: Vector):
         super().__init__(width, height, position, pointing_direction)
 
-    def _reflection_model(self):
-        raise NotImplementedError(f"Method not yet implementated in {self.__class__}")
+    def _reflection_model(self, element, intersection_point, surface_normal_at_intersection, direction_to_origin_unit, intersection_map, reflection_weights):
+        return np.zeros(intersection_point.x.shape, dtype=bool)
     
-    def _transmission_model(self):
-        raise NotImplementedError(f"Method not yet implementated in {self.__class__}")
+    def _transmission_model(self, element, initial_intersection, final_intersection, transmission_weights):
+        pass
 
     def view_data(self):
-        raise NotImplementedError(f"Method not yet implementated in {self.__class__}")
-    
-
-class PathLength(Detector):
-    pass
-
-
-class PolarizationAmplitude(Detector):
-    pass
-
-
-class PolarizationAngle(Detector):
-    pass
+        pass
 
 
 class Camera(Detector):

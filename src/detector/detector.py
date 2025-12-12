@@ -6,7 +6,10 @@ from PIL import Image
 
 from ..math.vector import Vector
 from ..element.element import Element
-from .render_targets import RenderTarget
+
+import logging
+from luminous.src.utilities.logconfig import setup_logging
+logger = logging.getLogger(__name__)
 
 
 class Detector(ABC):
@@ -24,7 +27,6 @@ class Detector(ABC):
         self.width = width
         self.height = height
         self.pointing_direction = pointing_direction.norm()
-        self.render_target = RenderTarget(self, user_render_targets)
 
     @abstractmethod
     def _reflection_model(  self, 
@@ -89,11 +91,9 @@ class Camera(Detector):
         # unilluminated pixels display this noise floor
         self.ambient_dark = Vector(0, 0, 0)
 
-    def _reflection_model(self, element, intersection_point, surface_normal_at_intersection, direction_to_origin_unit, intersection_map, reflection_weights):
+    def _reflection_model(self, element, intersection_point, surface_normal_at_intersection, direction_to_origin_unit, intersection_map):
 
         s = Vector(0,0,0)
-
-        # TODO do something with weights
 
         for v in intersection_map:
 
@@ -114,13 +114,12 @@ class Camera(Detector):
 
         return self.ambient_dark + s
     
-    def _transmission_model(self, element, initial_intersection, final_intersection, transmission_weights):
+    def _transmission_model(self, element, initial_intersection, final_intersection):
 
         # TODO this doesn't really diminish the part of the image associated with rays that transmit through en element. so, doesn't really make sense.
         # pretty sure I could create a new `element.intersect` kind of method that returns an array of elements to where those subsequent rays (exiting the volume)
         # will intersect (rather than a point of intersection). which would provide feedback about the type of color tinting required within the `_transmission_model`
 
-        # TODO do something with weights
         internal_travel_distance: Vector = (final_intersection - initial_intersection).magnitude() 
         beers_law_attenuation = element.surface_color(initial_intersection) * np.exp(-internal_travel_distance)
         return beers_law_attenuation
@@ -129,6 +128,7 @@ class Camera(Detector):
         '''
         Pixel values in `_data` represent colors
         '''
+        logger.debug(f"_data.size.x: {self._data.x.size}. height: {self.height}. width: {self.width}")
         rgb = [
             Image.fromarray(
                 (255 * np.clip(c, 0, 1).reshape((self.height, self.width))).astype(np.uint8),

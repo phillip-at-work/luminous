@@ -1,8 +1,11 @@
 import logging
 
-def setup_logging(name, level=logging.INFO, log_format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', log_file=None):
+def setup_logging(name, level=logging.CRITICAL, log_format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', log_file=None):
     logger = logging.getLogger(name)
     logger.setLevel(level)
+
+    if logger.hasHandlers():
+        logger.handlers.clear()
 
     handlers = []
     stream_handler = logging.StreamHandler()

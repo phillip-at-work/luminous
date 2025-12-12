@@ -3,7 +3,8 @@ from abc import ABC, abstractmethod
 from ..math.vector import Vector
 
 import logging
-logger = logging.getLogger('luminous.source')
+from luminous.src.utilities.logconfig import setup_logging
+logger = logging.getLogger(__name__)
 
 class Source(ABC):
     pass
@@ -16,7 +17,7 @@ class Laser(Source):
 class Isotropic(Source):
     def __init__(self, position: Vector, pointing_direction: Vector):
         self.position = position
-        self.pointing_direction = pointing_direction.norm()
+        self.pointing_direction = None # semantics for isotropic sources. no specific pointing direction.
 
 
 class Custom(Source):

@@ -177,39 +177,35 @@ class Scene:
                     surface_normal_at_intersection: Vector = element.compute_inward_normal(intersection_point)                    
                 else:
                     surface_normal_at_intersection: Vector = element.compute_outward_normal(intersection_point)
+
                 intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * 0.0001
                 direction_to_origin_unit: Vector = (detector.position - intersection_point).norm()
 
-                for source in self.sources:
+                if recursion_enum == 'REFLECTION' or recursion_enum == 'START':
 
-                    # TODO revise this to properly handle refracted rays as well as reflected rays
+                    for source in self.sources:
 
-                    direction_to_source: Vector = source.position - intersection_point_with_standoff
-                    direction_to_source_unit: Vector = direction_to_source.norm()
-                    intersections_blocking_source: list[NDArray[np.float64]] = [element.intersect(intersection_point_with_standoff, direction_to_source_unit) for element in self.elements]
-                    minimum_distances_with_standoff: NDArray[np.float64] = reduce(np.minimum, intersections_blocking_source)
-                    distances_to_source = direction_to_source.magnitude()
-                    intersection_point_illuminated: NDArray[np.bool_] = minimum_distances_with_standoff >= distances_to_source
+                        # TODO currently, this implementation will never allow rays to "see" sources when reflecting from within
+                        # a translucent object
 
-                    if len(intersection_point_illuminated) < 1:
-                        continue
+                        direction_to_source: Vector = source.position - intersection_point_with_standoff
+                        direction_to_source_unit: Vector = direction_to_source.norm()
+                        intersections_blocking_source: list[NDArray[np.float64]] = [element.intersect(intersection_point_with_standoff, direction_to_source_unit) for element in self.elements]
+                        minimum_distances_with_standoff: NDArray[np.float64] = reduce(np.minimum, intersections_blocking_source)
+                        distances_to_source = direction_to_source.magnitude()
+                        intersection_point_illuminated: NDArray[np.bool_] = minimum_distances_with_standoff >= distances_to_source
 
-                    self.intersection_map.append({'source': source, 'direction_to_source_unit': direction_to_source_unit, 'intersection_point_illuminated': intersection_point_illuminated})
+                        if len(intersection_point_illuminated) < 1:
+                            continue
 
-                    illuminated_intersections: Vector = intersection_point.extract(intersection_point_illuminated)
-                    direction_to_source_minima: Vector = direction_to_source.extract(intersection_point_illuminated)
-                    intersection_to_source: Vector = illuminated_intersections + direction_to_source_minima
+                        self.intersection_map.append({'source': source, 'direction_to_source_unit': direction_to_source_unit, 'intersection_point_illuminated': intersection_point_illuminated})
 
-                    self.ray_debugger.add_vector(start_point=start_point, end_point=intersection_point_with_standoff, color=(0,0,255)) # to elements
-                    self.ray_debugger.add_vector(start_point=illuminated_intersections, end_point=intersection_to_source, color=(255,0,255)) # to sources
+                        illuminated_intersections: Vector = intersection_point.extract(intersection_point_illuminated)
+                        direction_to_source_minima: Vector = direction_to_source.extract(intersection_point_illuminated)
+                        intersection_to_source: Vector = illuminated_intersections + direction_to_source_minima
 
-                # if ray_within_volume[element]:
-                #     self.ray_debugger.add_vector(start_point=start_point, end_point=intersection_point, color=(255,255,0)) # transmitted ray
-                #     logger.debug(f"MODEL TRANSMIT. counter={self.counter}. bounce={bounce}")
-                #     ray_data = detector._transmission_model( element,
-                #                                                 start_point,
-                #                                                 intersection_point)
-                #     rays += ray_data.place(hit)
+                        self.ray_debugger.add_vector(start_point=start_point, end_point=intersection_point_with_standoff, color=(0,0,255)) # to elements
+                        self.ray_debugger.add_vector(start_point=illuminated_intersections, end_point=intersection_to_source, color=(255,0,255)) # to sources
                 
 
                 ray_data = detector._reflection_model(element,
@@ -246,18 +242,23 @@ class Scene:
                     # should be handled in the above block, as sources should be directly imageable also
 
                     if ray_within_volume[element]:
+                        self.ray_debugger.add_vector(start_point=start_point, end_point=intersection_point, color=(255,255,0)) # transmitted ray
+                        # logger.debug(f"MODEL TRANSMIT. counter={self.counter}. bounce={bounce}")
+                        # ray_data = detector._transmission_model( element,
+                        #                                             start_point,
+                        #                                             intersection_point)
+                        # rays += ray_data.place(hit)
+
                         surface_normal_at_intersection: Vector = element.compute_inward_normal(intersection_point)
-                    else:
-                        surface_normal_at_intersection: Vector = element.compute_outward_normal(intersection_point)
-                    intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * 0.0001
-                    
-                    if ray_within_volume[element]:
                         n1 = element.refractive_index
                         n2 = self.refractive_index
                     else:
+                        surface_normal_at_intersection: Vector = element.compute_outward_normal(intersection_point)
                         n1 = self.refractive_index
                         n2 = element.refractive_index
 
+                    intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * 0.0001
+                    
                     transmitted_ray = self._transmitted_ray(
                             incident_ray,
                             surface_normal_at_intersection,

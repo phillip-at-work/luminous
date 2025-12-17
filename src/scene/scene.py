@@ -163,16 +163,16 @@ class Scene:
 
             if np.any(hit):
 
-                ray_travel_distance: NDArray[np.float64] = extract(hit, distance)
                 start_point: Vector = origin.extract(hit)
                 incident_ray: Vector = direction.extract(hit)
+                ray_travel_distance: NDArray[np.float64] = extract(hit, distance)
 
                 intersection_point: Vector = start_point + incident_ray * ray_travel_distance
 
-                surface_normal_at_intersection: Vector = element.compute_outward_normal(intersection_point)
-
-                intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * 0.0001
-                direction_to_origin_unit: Vector = (detector.position - intersection_point).norm()
+                if recursion_enum == 'TRANSMISSION-IN':
+                    self.ray_debugger.add_vector(start_point=start_point, end_point=intersection_point, color=(0,255,255)) # transmitted ray (cyan)
+                elif recursion_enum == 'TRANSMISSION-OUT':
+                    self.ray_debugger.add_vector(start_point=start_point, end_point=intersection_point, color=(255,255,0)) # transmitted ray (yellow)
 
                 #
                 # transmission from volume
@@ -185,7 +185,7 @@ class Scene:
                     n1 = element.refractive_index
                     n2 = self.refractive_index
 
-                    intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * 0.0001
+                    intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * 0.001
                     
                     transmitted_ray = self._transmitted_ray(
                             incident_ray,
@@ -193,8 +193,6 @@ class Scene:
                             n1,
                             n2
                         )
-                    
-                    self.ray_debugger.add_vector(start_point=intersection_point_with_standoff, end_point=intersection_point_with_standoff+transmitted_ray, color=(255,255,0)) # transmitted ray (yellow)
 
                     ray_within_volume[element] = False
                     
@@ -205,12 +203,49 @@ class Scene:
                     #                                         transmitted_ray,
                     #                                         detector)
 
-                    ray_data = self._recursive_trace(detector, intersection_point_with_standoff, transmitted_ray, elements, bounce+1, recursion_enum="TRANSMISSION", ray_within_volume=ray_within_volume)
+                    ray_data = self._recursive_trace(detector, intersection_point_with_standoff, transmitted_ray, elements, bounce+1, recursion_enum="TRANSMISSION-OUT", ray_within_volume=ray_within_volume)
+                    rays += ray_data.place(hit)
+
+                #
+                # transmission into volume
+                #
+
+                if (element.transparent and not ray_within_volume[element]) and bounce < 2:
+                        
+                    surface_normal_at_intersection: Vector = element.compute_outward_normal(intersection_point)
+
+                    n1 = self.refractive_index
+                    n2 = element.refractive_index
+
+                    intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * 0.001
+                    
+                    transmitted_ray = self._transmitted_ray(
+                            incident_ray,
+                            surface_normal_at_intersection,
+                            n1,
+                            n2
+                        )
+
+                    ray_within_volume[element] = True
+                    
+                    logger.debug(f"TRANSMIT INTO. counter={self.counter}. bounce={bounce}")
+
+                    # self.image_resolver._map_transmission(  element,
+                    #                                         intersection_point,
+                    #                                         transmitted_ray,
+                    #                                         detector)
+
+                    ray_data = self._recursive_trace(detector, intersection_point_with_standoff, transmitted_ray, elements, bounce+1, recursion_enum="TRANSMISSION-IN", ray_within_volume=ray_within_volume)
                     rays += ray_data.place(hit)
 
                 #
                 # surface reflection
                 #
+
+                surface_normal_at_intersection: Vector = element.compute_outward_normal(intersection_point)
+
+                intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * 0.0001
+                direction_to_origin_unit: Vector = (detector.position - intersection_point).norm()
 
                 for source in self.sources:
 
@@ -261,38 +296,10 @@ class Scene:
                     rays += ray_data.place(hit)
 
                 #
-                # transmission into volume
+                # sub-surface reflection
                 #
 
-                if (element.transparent and not ray_within_volume[element]) and bounce < 2:
-                        
-                    surface_normal_at_intersection: Vector = element.compute_outward_normal(intersection_point)
-
-                    n1 = self.refractive_index
-                    n2 = element.refractive_index
-
-                    intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * 0.0001
-                    
-                    transmitted_ray = self._transmitted_ray(
-                            incident_ray,
-                            surface_normal_at_intersection,
-                            n1,
-                            n2
-                        )
-                    
-                    self.ray_debugger.add_vector(start_point=intersection_point_with_standoff, end_point=intersection_point_with_standoff+transmitted_ray, color=(0,255,255)) # transmitted ray (cyan)
-
-                    ray_within_volume[element] = True
-                    
-                    logger.debug(f"TRANSMIT INTO. counter={self.counter}. bounce={bounce}")
-
-                    # self.image_resolver._map_transmission(  element,
-                    #                                         intersection_point,
-                    #                                         transmitted_ray,
-                    #                                         detector)
-
-                    ray_data = self._recursive_trace(detector, intersection_point_with_standoff, transmitted_ray, elements, bounce+1, recursion_enum="TRANSMISSION", ray_within_volume=ray_within_volume)
-                    rays += ray_data.place(hit)
+                    # TODO
 
         logger.debug(f"RETURNING. counter={self.counter}. enum={recursion_enum}")
         return rays

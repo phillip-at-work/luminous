@@ -178,9 +178,7 @@ class Scene:
                 # transmission from volume
                 #
 
-                if ray_within_volume[element] and bounce < 5:
-                    
-                    self.ray_debugger.add_vector(start_point=start_point, end_point=intersection_point, color=(255,255,0)) # transmitted ray (yellow)
+                if ray_within_volume[element] and bounce < 2:
 
                     surface_normal_at_intersection: Vector = element.compute_inward_normal(intersection_point)
                     
@@ -195,6 +193,8 @@ class Scene:
                             n1,
                             n2
                         )
+                    
+                    self.ray_debugger.add_vector(start_point=intersection_point_with_standoff, end_point=intersection_point_with_standoff+transmitted_ray, color=(255,255,0)) # transmitted ray (yellow)
 
                     ray_within_volume[element] = False
                     
@@ -264,11 +264,9 @@ class Scene:
                 # transmission into volume
                 #
 
-                if (element.transparent and not ray_within_volume[element]) and bounce < 5:
-
-                    self.ray_debugger.add_vector(start_point=start_point, end_point=intersection_point, color=(0,255,255)) # transmitted ray (cyan)
+                if (element.transparent and not ray_within_volume[element]) and bounce < 2:
                         
-                    surface_normal_at_intersection: Vector = element.compute_inward_normal(intersection_point)
+                    surface_normal_at_intersection: Vector = element.compute_outward_normal(intersection_point)
 
                     n1 = self.refractive_index
                     n2 = element.refractive_index
@@ -281,6 +279,8 @@ class Scene:
                             n1,
                             n2
                         )
+                    
+                    self.ray_debugger.add_vector(start_point=intersection_point_with_standoff, end_point=intersection_point_with_standoff+transmitted_ray, color=(0,255,255)) # transmitted ray (cyan)
 
                     ray_within_volume[element] = True
                     

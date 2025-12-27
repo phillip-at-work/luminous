@@ -168,11 +168,6 @@ class Scene:
                 ray_travel_distance: NDArray[np.float64] = extract(hit, distance)
 
                 intersection_point: Vector = start_point + incident_ray * ray_travel_distance
-
-                if recursion_enum == 'TRANSMISSION-IN':
-                    self.ray_debugger.add_vector(start_point=start_point, end_point=intersection_point, color=(0,255,255)) # transmitted ray (cyan)
-                    ray_data = detector._transmission_model( element, start_point, intersection_point)
-                    rays += ray_data.place(hit)
             
                 #
                 # transmission from volume
@@ -181,17 +176,13 @@ class Scene:
                 if ray_within_volume[element] and bounce < 2:
 
                     surface_normal_at_intersection: Vector = element.compute_inward_normal(intersection_point)
-                    
-                    n1 = element.refractive_index
-                    n2 = self.refractive_index
-
                     intersection_point_with_standoff: Vector = intersection_point - surface_normal_at_intersection * 0.001
                     
                     transmitted_ray = self._transmitted_ray(
                             incident_ray,
                             surface_normal_at_intersection,
-                            n1,
-                            n2
+                            element.refractive_index,
+                            self.refractive_index
                         )
 
                     ray_within_volume[element] = False
@@ -205,20 +196,22 @@ class Scene:
                 # transmission into volume
                 #
 
+                if recursion_enum == 'TRANSMISSION-IN':
+
+                    self.ray_debugger.add_vector(start_point=start_point, end_point=intersection_point, color=(0,255,255)) # transmitted ray (cyan)
+                    ray_data = detector._transmission_model( element, start_point, intersection_point)
+                    rays += ray_data.place(hit)
+
                 if (element.transparent and not ray_within_volume[element] and not recursion_enum=='TRANSMISSION-IN') and bounce < 2:
                         
                     surface_normal_at_intersection: Vector = element.compute_outward_normal(intersection_point)
-
-                    n1 = self.refractive_index
-                    n2 = element.refractive_index
-
                     intersection_point_with_standoff: Vector = intersection_point - surface_normal_at_intersection * 0.001
                     
                     transmitted_ray = self._transmitted_ray(
                             incident_ray,
                             surface_normal_at_intersection,
-                            n1,
-                            n2
+                            self.refractive_index,
+                            element.refractive_index
                         )
 
                     ray_within_volume[element] = True

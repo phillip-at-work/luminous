@@ -105,15 +105,29 @@ class ConcreteRayDebugger(RayDebugger):
         if isinstance(start_point, Vector):
             start_point = start_point.components()
 
+        # case 1: both start_point and end_point are single points (floats)
         if all(isinstance(item, numbers.Number) for item in start_point) and all(isinstance(item, numbers.Number) for item in end_point):
             self._insert_vector(start_point, end_point, color_scalar)
             return
-        
+
+        # case 2: both start_point and end_point are numpy arrays
         if all(isinstance(item, np.ndarray) for item in start_point) and all(isinstance(item, np.ndarray) for item in end_point):
             for start_x, start_y, start_z, end_x, end_y, end_z in zip(start_point[0], start_point[1], start_point[2], end_point[0], end_point[1], end_point[2]):
                 self._insert_vector((start_x, start_y, start_z), (end_x, end_y, end_z), color_scalar)
             return
-        
+
+        # case 3: start_point is a group of points (numpy arrays), and end_point is a single point (floats)
+        if all(isinstance(item, np.ndarray) for item in start_point) and all(isinstance(item, numbers.Number) for item in end_point):
+            for start_x, start_y, start_z in zip(start_point[0], start_point[1], start_point[2]):
+                self._insert_vector((start_x, start_y, start_z), end_point, color_scalar)
+            return
+
+        # case 4: end_point is a group of points (numpy arrays), and start_point is a single point (floats)
+        if all(isinstance(item, numbers.Number) for item in start_point) and all(isinstance(item, np.ndarray) for item in end_point):
+            for end_x, end_y, end_z in zip(end_point[0], end_point[1], end_point[2]):
+                self._insert_vector(start_point, (end_x, end_y, end_z), color_scalar)
+            return
+
         m = inspect.currentframe().f_code.co_name
         raise TypeError(f"Unknown data structure inside call: {self.__class__.__name__}.{m}")
 

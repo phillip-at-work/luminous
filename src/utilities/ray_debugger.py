@@ -1,22 +1,31 @@
 import os 
 from luminous.src.math.vector import Vector
+from luminous.src.element.element import Sphere, CheckeredSphere
 import math
 import numpy as np
 import datetime
-import abc
+from abc import ABC, abstractmethod
 import numbers
 import inspect
 
-class RayDebugger(abc.ABC):
-    @abc.abstractmethod
+class RayDebugger(ABC):
+    @abstractmethod
     def add_vector(self, start_point, end_point, color):
         pass
 
-    @abc.abstractmethod
+    @abstractmethod
     def add_point(self, end_point, color):
         pass
 
-    @abc.abstractmethod
+    @abstractmethod
+    def add_element(self, element, color=(0,0,0)):
+        pass
+
+    @abstractmethod
+    def add_sphere(self, center, color, radius, opacity=0.3):
+        pass
+
+    @abstractmethod
     def plot(self):
         pass
 
@@ -28,6 +37,10 @@ class NullRayDebugger(RayDebugger):
     def add_vector(self, end_point, start_point=(0,0,0), color=(0,0,0)):
         pass
     def add_point(self, end_point, color=(0,0,0)):
+        pass
+    def add_element(self, element, color=(0,0,0)):
+        pass
+    def add_sphere(self, center, color=(0,0,0), radius=0.1, opacity=0.3):
         pass
     def plot(self):
         pass
@@ -56,6 +69,9 @@ class ConcreteRayDebugger(RayDebugger):
         self.vector_color_scalars.SetNumberOfComponents(3)
         self.vector_magnitudes = vtk.vtkFloatArray()
         self.vector_magnitudes.SetNumberOfComponents(1)
+
+        # elements
+        self.spheres = list()
 
         # points
         self.point_radius = point_radius
@@ -95,6 +111,24 @@ class ConcreteRayDebugger(RayDebugger):
 
         m = inspect.currentframe().f_code.co_name
         raise TypeError(f"Unknown data structure inside call: {self.__class__.__name__}.{m}")
+    
+    def add_sphere(self, p, color=(0,0,0), radius=0.1, opacity=0.5):
+
+        if isinstance(p, Vector):
+            p = p.components()
+
+        # case 1: single point
+        if all(isinstance(item, numbers.Number) for item in p):
+            self.spheres.append((p, color, radius, opacity))
+            return
+
+        # case 2: numpy arrays
+        if all(isinstance(item, np.ndarray) for item in p):
+            for x, y, z in zip(*p):
+                self.spheres.append(((x, y, z), color, radius, opacity))
+            return
+
+        raise TypeError(f"Unknown data structure in add_sphere")
  
     def add_vector(self, start_point, end_point, color=(0,0,0)):
 
@@ -130,6 +164,15 @@ class ConcreteRayDebugger(RayDebugger):
 
         m = inspect.currentframe().f_code.co_name
         raise TypeError(f"Unknown data structure inside call: {self.__class__.__name__}.{m}")
+    
+    def add_element(self, element, color=(0,0,0)):
+        
+        if isinstance(element, Sphere) or isinstance(element, CheckeredSphere):
+            self.add_sphere(p=element.center, color=color, radius=element.radius)
+            return
+        
+        m = inspect.currentframe().f_code.co_name
+        raise TypeError(f"Unknown element inside call: {self.__class__.__name__}.{m}")
 
     def _insert_vector(self, start_point, end_point, color_scalar):
 
@@ -197,6 +240,25 @@ class ConcreteRayDebugger(RayDebugger):
             point_actor.SetMapper(point_mapper)
  
             renderer.AddActor(point_actor)
+
+        # spheres
+        for center, color, radius, opacity in self.spheres:
+            sphere_source = self.vtk.vtkSphereSource()
+            sphere_source.SetCenter(center)
+            sphere_source.SetRadius(radius)
+            sphere_source.SetThetaResolution(24) 
+            sphere_source.SetPhiResolution(24)
+
+            sphere_mapper = self.vtk.vtkPolyDataMapper()
+            sphere_mapper.SetInputConnection(sphere_source.GetOutputPort())
+
+            sphere_actor = self.vtk.vtkActor()
+            sphere_actor.SetMapper(sphere_mapper)
+            # Actor expects 0-1.0 range for colors
+            sphere_actor.GetProperty().SetColor(color[0]/255, color[1]/255, color[2]/255)
+            sphere_actor.GetProperty().SetOpacity(opacity)
+            
+            renderer.AddActor(sphere_actor)
  
         # vectors
         if self.vector_points.GetNumberOfPoints() > 0:
@@ -251,6 +313,9 @@ class ConcreteRayDebugger(RayDebugger):
                 end_point = [start_point[j] + vector_direction[j] * vector_magnitude for j in range(3)]
                 all_points.InsertNextPoint(start_point)
                 all_points.InsertNextPoint(end_point)
+
+            for s in self.spheres:
+                all_points.InsertNextPoint(s[0])
 
             polydata = self.vtk.vtkPolyData()
             polydata.SetPoints(all_points)

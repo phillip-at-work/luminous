@@ -15,8 +15,9 @@ class Laser(Source):
 
 
 class Isotropic(Source):
-    def __init__(self, position: Vector, pointing_direction: Vector):
+    def __init__(self, position: Vector, color: Vector, pointing_direction: Vector):
         self.position = position
+        self.color = color
         self.pointing_direction = None # semantics for isotropic sources. no specific pointing direction.
 
 

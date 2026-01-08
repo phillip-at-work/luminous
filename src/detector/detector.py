@@ -6,6 +6,7 @@ from PIL import Image
 
 from ..math.vector import Vector
 from ..element.element import Element
+from ..source.source import Source
 
 import logging
 from luminous.src.utilities.logconfig import setup_logging
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class Detector(ABC):
-    def __init__(self, width: int, height: int, position: Vector, pointing_direction: Vector, user_render_targets: list[type[Detector]] = None):
+    def __init__(self, width: int, height: int, position: Vector, pointing_direction: Vector):
         '''
         Parameters:
             _data (Vector): Detector's accumulated data, called directly from within `Scene`
@@ -34,10 +35,9 @@ class Detector(ABC):
                             intersection_point: Vector,
                             surface_normal_at_intersection: Vector, 
                             direction_to_origin_unit: Vector, 
-                            intersection_map: list[dict],
-                            reflection_weights: NDArray[np.number]) -> Vector:
+                            intersection_map: list[dict]) -> Vector:
         '''
-        Recursively compile data for detector model
+        Tint or otherwise weight pixel data model at reflection event.
 
         Support for multiple sources MUST be implemented here!
         e.g., shaded pixel values are the sum or weighted sum of the contributions of sources which illuminate that pixel
@@ -60,12 +60,24 @@ class Detector(ABC):
                             initial_intersection: Vector,
                             final_intersection: Vector,
                             transmission_weights: NDArray[np.number]):
-        
-        # TODO document parameters
-        
         '''
-        Support for multiple sources should not be involved here, as rays incident on the same point
-        only generate the same transmitted ray if those sources occupy the same space, which is impossible.
+        Tint or otherwise weight pixel data model at transmission event.
+
+        # TODO document parameters
+        '''
+        pass
+
+    @abstractmethod
+    def _emission_model(    self, 
+                            source: Source,
+                            intersection_point: Vector,
+                            surface_normal_at_intersection: Vector, 
+                            direction_to_origin_unit: Vector, 
+                            intersection_map: list[dict]) -> Vector:
+        '''
+        Tint or otherwise weight pixel data model when ray's origin position is in direct view of the source.
+
+        # TODO document parameters
         '''
         pass
 
@@ -93,6 +105,8 @@ class Camera(Detector):
 
     def _reflection_model(self, element, intersection_point, surface_normal_at_intersection, direction_to_origin_unit, intersection_map):
 
+        # TODO where does source color tint the reflected result?
+
         s = Vector(0,0,0)
 
         for v in intersection_map:
@@ -116,13 +130,43 @@ class Camera(Detector):
     
     def _transmission_model(self, element, initial_intersection, final_intersection):
 
-        # TODO this doesn't really diminish the part of the image associated with rays that transmit through en element. so, doesn't really make sense.
-        # pretty sure I could create a new `element.intersect` kind of method that returns an array of elements to where those subsequent rays (exiting the volume)
-        # will intersect (rather than a point of intersection). which would provide feedback about the type of color tinting required within the `_transmission_model`
+        # TODO this current implementation isn't great
+        # next version should do two things: diminish the intensity of the ray passing through the medium and tint that ray based upon element color
 
         internal_travel_distance: Vector = (final_intersection - initial_intersection).magnitude() 
         beers_law_attenuation = element.surface_color(initial_intersection) * np.exp(-internal_travel_distance)
         return beers_law_attenuation
+    
+    def _emission_model(self, source_emission_area_normal: Vector, intersection_map):
+
+        s = Vector(0,0,0)
+
+        for v in intersection_map:
+
+            source = v['source']
+            direction_to_source_unit = v['direction_to_source_unit']
+            intersection_point_illuminated = v['start_point_illuminated']
+            recursion_enum = v['recursion_enum']
+
+            if recursion_enum == 'START':
+
+                dot_product_clamped = np.maximum(source_emission_area_normal.dot(direction_to_source_unit), 0)
+                # min_val = dot_product_clamped.min()
+                # max_val = dot_product_clamped.max()
+                # normalized_dot_product = (dot_product_clamped - min_val) / (max_val - min_val)
+
+                delta = 0.8
+                scintillation = Vector(x = np.random.uniform(-delta, delta, size=intersection_point_illuminated.shape),
+                                        y = np.random.uniform(-delta, delta, size=intersection_point_illuminated.shape),
+                                        z = np.random.uniform(-delta, delta, size=intersection_point_illuminated.shape))
+
+                s += (source.color + scintillation) * dot_product_clamped * intersection_point_illuminated
+
+            else:
+
+                s += source.color * intersection_point_illuminated
+
+        return self.ambient_dark + s
 
     def view_data(self):
         '''

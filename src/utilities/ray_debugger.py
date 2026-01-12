@@ -1,6 +1,6 @@
 import os 
 from luminous.src.math.vector import Vector
-from luminous.src.element.element import Sphere, CheckeredSphere
+from luminous.src.element.element import Sphere, Element
 import math
 import numpy as np
 import datetime
@@ -167,7 +167,7 @@ class ConcreteRayDebugger(RayDebugger):
     
     def add_element(self, element, color=(0,0,0)):
         
-        if isinstance(element, Sphere) or isinstance(element, CheckeredSphere):
+        if isinstance(element, Sphere):
             self.add_sphere(p=element.center, color=color, radius=element.radius)
             return
         

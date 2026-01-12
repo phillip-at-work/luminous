@@ -5,7 +5,14 @@ from ..math.vector import Vector
 
 FARAWAY = 1.0e39
 
+#
+# not for user instantiation
+#
+
 class Element(ABC):
+
+    '''An object in the scene that does not emit light'''
+
     def __init__(self, center: Vector, color: Vector, transparent: bool = False, refractive_index: float = 1.0, user_params: dict = None):
         '''
         Parameters:
@@ -26,38 +33,44 @@ class Element(ABC):
                 raise AttributeError(f"Attribute '{key}' already exists in the instance and cannot be overwritten.")
             setattr(self, key, value)
 
+class Source(ABC):
+    '''An object in the scene which does emit light'''
+    pass
+
+class SceneObject(ABC):
+
     @abstractmethod
     def intersect(self, origin: Vector, direction: Vector):
         '''
-        Calculate intersection of a ray with the element.
+        Calculate intersection of a ray with the object.
         '''
         pass
 
     @abstractmethod
     def surface_color(self, M: Vector) -> Vector:
         '''
-        Calculate or otherwise return the surface color of the element at point of intersection.
+        Calculate or otherwise return the surface color of the object at point of intersection.
         '''
         pass
 
     @abstractmethod
     def compute_outward_normal(self, intersection_point: Vector) -> Vector:
         '''
-        Compute normal vector, facing away from the volume, associated with incident Vector's point of intersection.
+        Compute normal vector, facing away from the object, associated with incident Vector's point of intersection.
         '''
         pass
 
     @abstractmethod
     def compute_inward_normal(self, intersection_point: Vector) -> Vector:
         '''
-        Compute normal vector, facing into the volume, associated with incident Vector's point of intersection.
+        Compute normal vector, facing into the object, associated with incident Vector's point of intersection.
         '''
         pass
 
-class Sphere(Element):
-    def __init__(self, center: Vector, radius: float, color: Vector, transparent: bool = False, refractive_index: float = 1.0, user_params=None):
-        super().__init__(center, color, transparent, refractive_index, user_params)
+class Sphere(SceneObject):
+    def __init__(self, center: Vector, radius: float):
         self.radius = radius
+        self.center = center
 
     def intersect(self, origin: Vector, direction: Vector):
         b = 2 * direction.dot(origin - self.center)
@@ -86,8 +99,29 @@ class Sphere(Element):
     def compute_inward_normal(self, intersection_point: Vector) -> Vector:
         normal_at_intersection = (self.center - intersection_point).norm()
         return normal_at_intersection
+    
+#
+# user elements for scenes
+#
+    
+class SphereElement(Element, Sphere):
+    def __init__(self, center: Vector, radius: float, color: Vector, transparent: bool = False, refractive_index: float = 1.0, user_params=None):
+        super().__init__(center, color, transparent, refractive_index, user_params)
+        self.radius = radius
 
-class CheckeredSphere(Sphere):
+    def intersect(self, origin: Vector, direction: Vector):
+        return super().intersect(origin, direction)
+
+    def surface_color(self, M: Vector) -> Vector:
+        return super().surface_color(M)
+
+    def compute_outward_normal(self, intersection_point: Vector) -> Vector:
+        return super().compute_outward_normal(intersection_point)
+    
+    def compute_inward_normal(self, intersection_point: Vector) -> Vector:
+        return super().compute_inward_normal(intersection_point)
+
+class CheckeredSphereElement(SphereElement):
     def __init__(self, center: Vector, radius: float, color: Vector, transparent: bool = False, refractive_index: float = 1.0, checker_color: Vector = Vector(1, 1, 1), user_params=None):
         super().__init__(center, radius, color, transparent, refractive_index, user_params)
         self.checker_color = checker_color
@@ -95,3 +129,14 @@ class CheckeredSphere(Sphere):
     def surface_color(self, M: Vector) -> Vector:
         checker = ((M.x * 2).astype(int) % 2) == ((M.z * 2).astype(int) % 2)
         return self.color * checker + self.checker_color * (1 - checker)
+
+#
+# user sources for scenes
+#
+
+class IsotropicSource(Source, Sphere):
+    def __init__(self, center: Vector, radius: float, color: Vector, pointing_direction: Vector):
+        self.center = center
+        self.radius = radius
+        self.color = color
+        self.pointing_direction = None # semantics for isotropic sources. no specific pointing direction.        

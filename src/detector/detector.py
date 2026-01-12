@@ -5,8 +5,7 @@ from numpy.typing import NDArray
 from PIL import Image
 
 from ..math.vector import Vector
-from ..element.element import Element
-from ..source.source import Source
+from ..element.element import SceneObject, Source
 
 import logging
 from luminous.src.utilities.logconfig import setup_logging
@@ -31,7 +30,7 @@ class Detector(ABC):
 
     @abstractmethod
     def _reflection_model(  self, 
-                            element: Element,
+                            element: SceneObject,
                             intersection_point: Vector,
                             surface_normal_at_intersection: Vector, 
                             direction_to_origin_unit: Vector, 
@@ -56,7 +55,7 @@ class Detector(ABC):
 
     @abstractmethod
     def _transmission_model(self, 
-                            element: Element,
+                            element: SceneObject,
                             initial_intersection: Vector,
                             final_intersection: Vector,
                             transmission_weights: NDArray[np.number]):

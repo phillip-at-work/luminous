@@ -34,8 +34,22 @@ class Element(ABC):
             setattr(self, key, value)
 
 class Source(ABC):
+
     '''An object in the scene which does emit light'''
-    pass
+    
+    def __init__(self):
+        self.ray_emission_direction = None
+        self.ray_emission_origin = None
+
+    def _enqueue_rays(self, origin: Vector, direction: Vector):
+        
+        if self.ray_emission_direction is None:
+            self.ray_emission_direction = direction
+            self.ray_emission_origin = origin
+        
+        else:
+            self.ray_emission_direction._merge(direction)
+            self.ray_emission_origin._merge(origin)
 
 class SceneObject(ABC):
 
@@ -66,6 +80,23 @@ class SceneObject(ABC):
         Compute normal vector, facing into the object, associated with incident Vector's point of intersection.
         '''
         pass
+
+class Circle(SceneObject):
+    def __init__(self, center: Vector, radius: float):
+        self.radius = radius
+        self.center = center
+
+    def intersect(self, origin: Vector, direction: Vector):
+        raise NotImplementedError()
+
+    def surface_color(self, M: Vector) -> Vector:
+        return self.color
+
+    def compute_outward_normal(self, intersection_point: Vector) -> Vector:
+        raise NotImplementedError()
+    
+    def compute_inward_normal(self, intersection_point: Vector) -> Vector:
+        raise NotImplementedError()
 
 class Sphere(SceneObject):
     def __init__(self, center: Vector, radius: float):
@@ -134,8 +165,9 @@ class CheckeredSphereElement(SphereElement):
 # user sources for scenes
 #
 
-class IsotropicSource(Source, Sphere):
+class IsotropicSource(Source, Circle):
     def __init__(self, center: Vector, radius: float, color: Vector, pointing_direction: Vector):
+        Source.__init__(self)
         self.center = center
         self.radius = radius
         self.color = color

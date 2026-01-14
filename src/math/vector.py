@@ -68,6 +68,30 @@ class Vector():
             return Vector(self.x ** power, self.y ** power, self.z ** power)
         else:
             raise TypeError("Vector power not compatible with type: %s" % type(power))
+        
+    def _merge(self, other):
+
+        # merge arrays. redundant entries persist.
+        
+        def to_array(value):
+            if isinstance(value, (float, int)):
+                return np.array([value])
+            elif isinstance(value, np.ndarray):
+                return value
+            else:
+                raise TypeError("Unsupported type for merging: %s" % type(value))
+
+        if not isinstance(other, Vector):
+            raise TypeError("Cannot merge with non-Vector object")
+
+        x1, y1, z1 = map(to_array, [self.x, self.y, self.z])
+        x2, y2, z2 = map(to_array, [other.x, other.y, other.z])
+
+        merged_x = np.concatenate((x1, x2))
+        merged_y = np.concatenate((y1, y2))
+        merged_z = np.concatenate((z1, z2))
+
+        return Vector(merged_x, merged_y, merged_z)
 
     def norm(self):
         mag = np.sqrt(self.x**2 + self.y**2 + self.z**2)

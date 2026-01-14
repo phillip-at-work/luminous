@@ -104,8 +104,6 @@ class Camera(Detector):
 
     def _reflection_model(self, element, intersection_point, surface_normal_at_intersection, direction_to_origin_unit, intersection_map):
 
-        # TODO where does source color tint the reflected result?
-
         s = Vector(0,0,0)
 
         for v in intersection_map:
@@ -136,7 +134,7 @@ class Camera(Detector):
         beers_law_attenuation = element.surface_color(initial_intersection) * np.exp(-internal_travel_distance)
         return beers_law_attenuation
     
-    def _emission_model(self, source_emission_area_normal: Vector, intersection_map):
+    def _emission_model(self, detection_area_normal: Vector, intersection_map):
 
         s = Vector(0,0,0)
 
@@ -144,26 +142,11 @@ class Camera(Detector):
 
             source = v['source']
             direction_to_source_unit = v['direction_to_source_unit']
-            intersection_point_illuminated = v['start_point_illuminated']
-            recursion_enum = v['recursion_enum']
+            intersection_point_illuminated = v['intersection_point_illuminated']
 
-            if recursion_enum == 'START':
+            dot_product_clamped = np.maximum(detection_area_normal.dot(direction_to_source_unit), 0)
 
-                dot_product_clamped = np.maximum(source_emission_area_normal.dot(direction_to_source_unit), 0)
-                # min_val = dot_product_clamped.min()
-                # max_val = dot_product_clamped.max()
-                # normalized_dot_product = (dot_product_clamped - min_val) / (max_val - min_val)
-
-                delta = 0.8
-                scintillation = Vector(x = np.random.uniform(-delta, delta, size=intersection_point_illuminated.shape),
-                                        y = np.random.uniform(-delta, delta, size=intersection_point_illuminated.shape),
-                                        z = np.random.uniform(-delta, delta, size=intersection_point_illuminated.shape))
-
-                s += (source.color + scintillation) * dot_product_clamped * intersection_point_illuminated
-
-            else:
-
-                s += source.color * intersection_point_illuminated
+            s += source.color * dot_product_clamped * intersection_point_illuminated
 
         return self.ambient_dark + s
 

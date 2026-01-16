@@ -131,13 +131,25 @@ class Scene:
             self.ray_debugger.add_vector(start_point=detector.position, end_point=detector_dir_translate, color=(255, 0, 0))
             self.ray_debugger.add_point(detector_pixels, color=(255,0,0))
 
+            logger.debug(f"REVERSE TRACE")
             ray_within_volume = {e: False for e in self.elements}
-            detector._data = self._recursive_trace(detector=detector, origin=detector_pixels, direction=pixel_incident_rays, bounce=0, recursion_enum="START", ray_within_volume=ray_within_volume)
+            detector._reverse_trace_data = self._reverse_recursive_trace(detector=detector, origin=detector_pixels, direction=pixel_incident_rays, bounce=0, recursion_enum="START", ray_within_volume=ray_within_volume)
 
-    def _recursive_trace(self, detector: Detector, origin: Vector, direction: Vector, bounce: int, recursion_enum: str, ray_within_volume: dict):
+        for source in self.sources:
+
+            # TODO ray debugger
+
+            logger.debug(f"FORWARD TRACE")
+            ray_within_volume = {e: False for e in self.elements}
+            detector._forward_trace_data = self._forward_recursive_trace(source=source, origin=detector_pixels, direction=pixel_incident_rays, bounce=0, recursion_enum="START", ray_within_volume=ray_within_volume)
+
+    def _forward_recursive_trace(self, source: Source, origin: Vector, direction: Vector, bounce: int, recursion_enum: str, ray_within_volume: dict):
+        pass
+
+    def _reverse_recursive_trace(self, detector: Detector, origin: Vector, direction: Vector, bounce: int, recursion_enum: str, ray_within_volume: dict):
 
         self.counter += 1
-        logger.debug(F"counter={self.counter}. enum={recursion_enum}")
+        logger.debug(f"counter={self.counter}. enum={recursion_enum}")
 
         rays = Vector(0, 0, 0)
 
@@ -221,7 +233,7 @@ class Scene:
                     
                     logger.debug(f"TRANSMISSION-OUT. counter={self.counter}. bounce={bounce}. current enum={recursion_enum}")
 
-                    ray_data = self._recursive_trace(detector, intersection_point_with_standoff, transmitted_ray, bounce+1, recursion_enum="TRANSMISSION-OUT", ray_within_volume=ray_within_volume)
+                    ray_data = self._reverse_recursive_trace(detector, intersection_point_with_standoff, transmitted_ray, bounce+1, recursion_enum="TRANSMISSION-OUT", ray_within_volume=ray_within_volume)
                     rays += ray_data.place(hit)
 
                 #
@@ -250,7 +262,7 @@ class Scene:
                     
                     logger.debug(f"TRANSMISSION-IN. counter={self.counter}. bounce={bounce}. current enum={recursion_enum}")
 
-                    ray_data = self._recursive_trace(detector, intersection_point_with_standoff, transmitted_ray, bounce+1, recursion_enum="TRANSMISSION-IN", ray_within_volume=ray_within_volume)
+                    ray_data = self._reverse_recursive_trace(detector, intersection_point_with_standoff, transmitted_ray, bounce+1, recursion_enum="TRANSMISSION-IN", ray_within_volume=ray_within_volume)
                     rays += ray_data.place(hit)
 
                 #
@@ -295,7 +307,7 @@ class Scene:
                     if bounce < 2:
                         logger.debug(f"SURFACE-REFLECTION. counter={self.counter}. bounce={bounce}. current enum={recursion_enum}")
                         reflected_ray = self._reflected_ray(incident_ray, surface_normal_at_intersection)                
-                        ray_data = self._recursive_trace(detector, intersection_point_with_standoff, reflected_ray, bounce + 1, recursion_enum="SURFACE-REFLECTION", ray_within_volume=ray_within_volume)
+                        ray_data = self._reverse_recursive_trace(detector, intersection_point_with_standoff, reflected_ray, bounce + 1, recursion_enum="SURFACE-REFLECTION", ray_within_volume=ray_within_volume)
                         rays += ray_data.place(hit)
 
                 #
@@ -314,7 +326,7 @@ class Scene:
                     if bounce < 2:
                         logger.debug(f"SUBSURFACE-REFLECTION. counter={self.counter}. bounce={bounce}")
                         reflected_ray = self._reflected_ray(incident_ray, surface_normal_at_intersection)                
-                        ray_data = self._recursive_trace(detector, intersection_point_with_standoff, reflected_ray, bounce + 1, recursion_enum="SUBSURFACE-REFLECTION", ray_within_volume=ray_within_volume)
+                        ray_data = self._reverse_recursive_trace(detector, intersection_point_with_standoff, reflected_ray, bounce + 1, recursion_enum="SUBSURFACE-REFLECTION", ray_within_volume=ray_within_volume)
 
         logger.debug(f"RETURNING. counter={self.counter}. enum={recursion_enum}. current enum={recursion_enum}")
         return rays

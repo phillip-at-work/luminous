@@ -22,7 +22,8 @@ class Detector(ABC):
             height (float): Detector height in pixels
             pointing_direction (Vector): vector defining `Detector` pointing direction
         '''
-        self._data = None
+        self._reverse_trace_data = None
+        self._forward_trace_data = None
         self.position = position
         self.width = width
         self.height = height
@@ -85,8 +86,12 @@ class Detector(ABC):
         '''
         Perform any final processing and return data to user
 
-        Instance attribute `_data` should be accessed, manipulated if necessary, and returned
+        Instance attribute `_reverse_trace_data` should be accessed, manipulated if necessary, and returned
         '''
+        pass
+
+    @abstractmethod
+    def intersect(self):
         pass
 
 class Camera(Detector):
@@ -150,17 +155,27 @@ class Camera(Detector):
 
         return self.ambient_dark + s
 
-    def view_data(self):
+    def view_data(self, forward_trace_data=False):
         '''
         Pixel values in `_data` represent colors
         '''
-        logger.debug(f"_data.size.x: {self._data.x.size}. height: {self.height}. width: {self.width}")
+
+        if forward_trace_data:
+            d = self._forward_trace_data
+        else:
+            d = self._reverse_trace_data
+            
+        logger.debug(f"data.size.x: {d.x.size}. height: {self.height}. width: {self.width}")
+        
         rgb = [
             Image.fromarray(
                 (255 * np.clip(c, 0, 1).reshape((self.height, self.width))).astype(np.uint8),
                 "L",
             )
-            for c in self._data.components()
+            for c in d.components()
         ]
 
         return Image.merge("RGB", rgb)
+    
+    def intersect(self):
+        pass

@@ -156,6 +156,10 @@ class Scene:
             distances_to_source = direction_to_source.magnitude()
             intersection_point_illuminated: NDArray[np.bool_] = minimum_distances_with_standoff >= distances_to_source
 
+            if recursion_enum == 'START':
+                foo = detector.pointing_direction.dot(direction_to_source) > 0
+                intersection_point_illuminated = intersection_point_illuminated & foo
+
             if np.sum(intersection_point_illuminated) < 1:
                 continue
 

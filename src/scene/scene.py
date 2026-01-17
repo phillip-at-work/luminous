@@ -28,7 +28,8 @@ class Scene:
         self.detectors = list()
         self.sources = list()
         self.intersection_map = list()
-        self.ray_debugger = NullRayDebugger()
+        self.ray_debugger_reverse = NullRayDebugger()
+        self.ray_debugger_forward = NullRayDebugger()
         self.counter = 0
 
     def elaspsed_time(self):
@@ -37,10 +38,12 @@ class Scene:
         return time.perf_counter() - self.start_time
 
     def attach_ray_debugger(self, path="./results", filename="debug_ray_trace", display_3d_plot=True):
-        self.ray_debugger = ConcreteRayDebugger()
+        self.ray_debugger_reverse = ConcreteRayDebugger()
+        self.ray_debugger_forward = ConcreteRayDebugger()
 
         def plot_ray_trace_wrap_user_args():
-            self.ray_debugger.plot(path=path, filename=filename, display_3d_plot=display_3d_plot)
+            self.ray_debugger_reverse.plot(path=path, filename=filename, display_3d_plot=display_3d_plot)
+            self.ray_debugger_forward.plot(path=path, filename=filename, display_3d_plot=display_3d_plot)
         atexit.register(plot_ray_trace_wrap_user_args)
 
     def compute_ray_directions(self, detector: Detector, detector_screen: Vector):
@@ -106,7 +109,8 @@ class Scene:
     def __iadd__(self, obj):
         if isinstance(obj, Element):
             self.elements.append(obj)
-            self.ray_debugger.add_element(obj, color=(255,215,0)) # scene elements (gold)
+            self.ray_debugger_reverse.add_element(obj, color=(255,215,0)) # scene elements (gold)
+            self.ray_debugger_forward.add_element(obj, color=(255,215,0)) # scene elements (gold)
         elif isinstance(obj, Source):
             self.sources.append(obj)
         elif isinstance(obj, Detector):
@@ -127,9 +131,9 @@ class Scene:
 
             # ray debugger
             detector_dir_translate: Vector = detector.position + detector.pointing_direction
-            self.ray_debugger.add_point(detector.position, color=(0, 255, 0))
-            self.ray_debugger.add_vector(start_point=detector.position, end_point=detector_dir_translate, color=(255, 0, 0))
-            self.ray_debugger.add_point(detector_pixels, color=(255,0,0))
+            self.ray_debugger_reverse.add_point(detector.position, color=(0, 255, 0))
+            self.ray_debugger_reverse.add_vector(start_point=detector.position, end_point=detector_dir_translate, color=(255, 0, 0))
+            self.ray_debugger_reverse.add_point(detector_pixels, color=(255,0,0))
 
             logger.debug(f"REVERSE TRACE")
             ray_within_volume = {e: False for e in self.elements}
@@ -179,7 +183,7 @@ class Scene:
             origin_point_illuminated: Vector = origin.extract(intersection_point_illuminated)
             intersection_to_source: Vector = origin_point_illuminated + direction_to_source_minima
 
-            self.ray_debugger.add_vector(start_point=origin_point_illuminated, end_point=intersection_to_source, color=(255,0,255)) # to sources
+            self.ray_debugger_reverse.add_vector(start_point=origin_point_illuminated, end_point=intersection_to_source, color=(255,0,255)) # to sources
 
             self.intersection_map.append({'source': source, 'direction_to_source_unit': direction_to_source_unit, 'intersection_point_illuminated': intersection_point_illuminated})
 
@@ -242,7 +246,7 @@ class Scene:
 
                 if recursion_enum == 'TRANSMISSION-IN':
 
-                    self.ray_debugger.add_vector(start_point=start_point, end_point=intersection_point, color=(0,255,255)) # transmitted ray (cyan)
+                    self.ray_debugger_reverse.add_vector(start_point=start_point, end_point=intersection_point, color=(0,255,255)) # transmitted ray (cyan)
                     ray_data = detector._transmission_model(element, start_point, intersection_point)
                     rays += ray_data.place(hit)
 
@@ -277,9 +281,9 @@ class Scene:
                     direction_to_origin_unit: Vector = (detector.position - intersection_point).norm()
 
                     if recursion_enum == 'SUBSURFACE-REFLECTION':
-                        self.ray_debugger.add_vector(start_point=start_point, end_point=intersection_point_with_standoff, color=(255,0,0)) # subsurface reflected ray (red)
+                        self.ray_debugger_reverse.add_vector(start_point=start_point, end_point=intersection_point_with_standoff, color=(255,0,0)) # subsurface reflected ray (red)
                     else:
-                        self.ray_debugger.add_vector(start_point=start_point, end_point=intersection_point_with_standoff, color=(0,0,255)) # surface reflected ray (blue)
+                        self.ray_debugger_reverse.add_vector(start_point=start_point, end_point=intersection_point_with_standoff, color=(0,0,255)) # surface reflected ray (blue)
 
                     for source in self.sources:
 

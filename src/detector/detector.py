@@ -160,11 +160,7 @@ class Camera(Detector):
         Pixel values in `_data` represent colors
         '''
 
-        if forward_trace_data:
-            d = self._forward_trace_data
-        else:
-            d = self._reverse_trace_data
-            
+        d = self._forward_trace_data if forward_trace_data else self._reverse_trace_data            
         logger.debug(f"data.size.x: {d.x.size}. height: {self.height}. width: {self.width}")
         
         rgb = [

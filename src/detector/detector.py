@@ -24,6 +24,7 @@ class Detector(ABC):
         '''
         self._reverse_trace_data = None
         self._forward_trace_data = None
+        self.pixels = None
         self.position = position
         self.width = width
         self.height = height

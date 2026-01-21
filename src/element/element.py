@@ -38,18 +38,18 @@ class Source(ABC):
     '''An object in the scene which does emit light'''
     
     def __init__(self):
-        self.ray_emission_direction = None
-        self.ray_emission_origin = None
+        self.ray_emission_direction = dict()
+        self.ray_emission_origin = dict()
 
-    def _enqueue_rays(self, origin: Vector, direction: Vector):
+    def _enqueue_rays(self, origin: Vector, direction: Vector, detector):
         
-        if self.ray_emission_direction is None:
-            self.ray_emission_direction = direction
-            self.ray_emission_origin = origin
+        if self.ray_emission_direction.get(detector) is None:
+            self.ray_emission_direction[detector] = direction
+            self.ray_emission_origin[detector] = origin
         
         else:
-            self.ray_emission_direction._merge(direction)
-            self.ray_emission_origin._merge(origin)
+            self.ray_emission_direction[detector]._merge(direction)
+            self.ray_emission_origin[detector]._merge(origin)
 
 class SceneObject(ABC):
 

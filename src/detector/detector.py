@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class Detector(ABC):
-    def __init__(self, width: int, height: int, position: Vector, pointing_direction: Vector):
+    def __init__(self, width: int, height: int, position: Vector, pointing_direction: Vector, surface_type, screen_width=2.0, screen_height=None):
         '''
         Parameters:
             _data (Vector): Detector's accumulated data, called directly from within `Scene`
@@ -21,14 +21,19 @@ class Detector(ABC):
             width (float): Detector width in pixels
             height (float): Detector height in pixels
             pointing_direction (Vector): vector defining `Detector` pointing direction
+            screen_width (float, optional): The physical width (X-direction) of the detector screen in scene units. Default is 2.0.
+            screen_height (float, optional): The physical height (Y-direction) of the detector screen. If None, calculated from screen_width and detector aspect ratio.
         '''
         self._reverse_trace_data = None
         self._forward_trace_data = None
         self.pixels = None
+        self.surface_type = surface_type
         self.position = position
         self.width = width
         self.height = height
         self.pointing_direction = pointing_direction.norm()
+        self.screen_width = screen_width
+        self.screen_height = screen_height
 
     @abstractmethod
     def _reflection_model(  self, 
@@ -95,6 +100,51 @@ class Detector(ABC):
     def intersect(self):
         pass
 
+class Square:
+
+    def __init__(self, top_left, top_right, bottom_left, bottom_right):
+        self.top_left = top_left
+        self.top_right = top_right
+        self.bottom_left = bottom_left
+        self.bottom_right = bottom_right
+
+    @classmethod
+    def get_surface_definition(cls, detector_coordinates: Vector, detector_pixel_width: int, detector_pixel_height: int):
+
+        idx_top_left = 0
+        idx_top_right = detector_pixel_width - 1
+        idx_bottom_left = (detector_pixel_height - 1) * detector_pixel_width
+        idx_bottom_right = detector_pixel_height * detector_pixel_width - 1
+
+        top_left = Vector(
+                np.array([detector_coordinates.x[idx_top_left]]),
+                np.array([detector_coordinates.y[idx_top_left]]),
+                np.array([detector_coordinates.z[idx_top_left]]) )
+        top_right = Vector(
+                np.array([detector_coordinates.x[idx_top_right]]),
+                np.array([detector_coordinates.y[idx_top_right]]),
+                np.array([detector_coordinates.z[idx_top_right]]) )
+        bottom_left = Vector(
+                np.array([detector_coordinates.x[idx_bottom_right]]),
+                np.array([detector_coordinates.y[idx_bottom_right]]),
+                np.array([detector_coordinates.z[idx_bottom_right]]))
+        bottom_right = Vector(
+                np.array([detector_coordinates.x[idx_bottom_left]]),
+                np.array([detector_coordinates.y[idx_bottom_left]]),
+                np.array([detector_coordinates.z[idx_bottom_left]]))
+
+        instance = cls(top_left, top_right, bottom_left, bottom_right)
+        return instance
+    
+class Circle:
+
+    def __init__(self):
+        raise NotImplemented
+
+    @classmethod
+    def get_surface_definition(self, detector_coordinates: Vector, detector_pixel_width: int, detector_pixel_height: int):
+        raise NotImplemented
+
 class Camera(Detector):
     '''
     Simple simulated camera using Blinn-Phong shading for pixels.
@@ -102,8 +152,9 @@ class Camera(Detector):
     NOTE    elements must include `user_params={'specular': s, 'n_s': n}`
             where s is a float and n is a float
     '''
-    def __init__(self, width: int, height: int, position: Vector, pointing_direction: Vector):
-        super().__init__(width, height, position, pointing_direction)
+    def __init__(self, width: int, height: int, position: Vector, pointing_direction: Vector, screen_width: float, screen_height: float):
+        surface_type = Square
+        super().__init__(width, height, position, pointing_direction, surface_type, screen_width, screen_height)
 
         # unilluminated pixels display this noise floor
         self.ambient_dark = Vector(0, 0, 0)

@@ -4,6 +4,7 @@ from numpy.typing import NDArray
 import time
 import atexit
 import copy
+from abc import ABC
 
 from ..math.vector import Vector
 from ..math.tools import extract
@@ -20,7 +21,7 @@ BOUNCE_COUNT = 2
 
 class Scene:
 
-    def __init__(self, index_of_refraction=1, log_level=logging.CRITICAL, log_file="luminous.log") -> None:
+    def __init__(self, index_of_refraction=1, log_level=logging.CRITICAL, log_file="luminous.log", standoff_distance=1e-5) -> None:
         setup_logging(name='luminous', level=log_level, log_file=log_file)
         self.start_time = None
         self.refractive_index = index_of_refraction
@@ -31,6 +32,7 @@ class Scene:
         self.ray_debugger_reverse = NullRayDebugger()
         self.ray_debugger_forward = NullRayDebugger()
         self.counter = 0
+        self.standoff_distance = standoff_distance
 
     def elaspsed_time(self):
         if self.start_time is None:
@@ -58,17 +60,50 @@ class Scene:
 
         return ray_dir
 
-    def create_screen_coord(self, w, h, detector_pointing_direction, detector_pos, vertical_screen_shift=0, horizontal_screen_shift=0, rotation=0) -> Vector:
-        '''
-        Create and return a Vector where each nth component of the vector represents one unique pixel in the detection screen;
-        where the larger detector axis is normalized to +/- 1 and the smaller axis is scaled to aspect ratio.
-        The detector screen surface is necessarily centered on detector_pos and normal to detector_pointing_direction.
-        '''
+    def create_screen_coord(
+        self,
+        surface_type, # an abstract class method
+        w: int,
+        h: int,
+        detector_pointing_direction: Vector,
+        detector_pos: Vector,
+        screen_width: float = 2.0,
+        screen_height: float = None,
+        vertical_screen_shift: float = 0.0,
+        horizontal_screen_shift: float = 0.0,
+        rotation: float = 0.0,
+    ) -> Vector:
+        """
+        Generates a set of 3D coordinates for each pixel on the detection screen.
+
+        The detector screen is a rectangular plane in 3D space, centered at `detector_pos` and oriented perpendicular to `detector_pointing_direction`.
+        The screen's physical size is specified by `screen_width` (and optionally `screen_height`); pixel centers are uniformly distributed across this surface.
+
+        Args:
+            w (int): Number of pixels along the horizontal (width/X) direction of the screen.
+            h (int): Number of pixels along the vertical (height/Y) direction of the screen.
+            detector_pointing_direction (Vector): A unit vector specifying the normal direction the detector screen faces.
+            detector_pos (Vector): The 3D position of the center of the detector screen.
+            screen_width (float, optional): The physical width (X-direction) of the detector screen in scene units. Default is 2.0.
+            screen_height (float, optional): The physical height (Y-direction) of the detector screen. If None, calculated from screen_width and detector aspect ratio.
+            vertical_screen_shift (float, optional): Shifts the screen vertically (in the local Y direction) relative to `detector_pos`. Default is 0.0.
+            horizontal_screen_shift (float, optional): Shifts the screen horizontally (in the local X direction) relative to `detector_pos`. Default is 0.0.
+            rotation (float, optional): Rotates the screen about its normal (in radians). Default is 0.0.
+
+        Returns:
+            Vector: A Vector object containing the 3D coordinates for each pixel on the screen, suitable for ray tracing.
+        """
+        
         aspect_ratio = w / h
-        screen = (  -1 + horizontal_screen_shift, 
-                    1 / aspect_ratio + vertical_screen_shift, 
-                    1 + horizontal_screen_shift, 
-                    -1 / aspect_ratio + vertical_screen_shift)
+        if screen_height is None:
+            screen_height = screen_width / aspect_ratio
+
+        screen = (
+            -screen_width / 2 + horizontal_screen_shift,
+            screen_height / 2 + vertical_screen_shift,
+            screen_width / 2 + horizontal_screen_shift,
+            -screen_height / 2 + vertical_screen_shift
+        )
         w_row = np.linspace(screen[0], screen[2], w)
         h_col = np.linspace(screen[1], screen[3], h)
         rows = np.tile(w_row, h)
@@ -82,7 +117,10 @@ class Scene:
             screen_coords = self._apply_rotation(screen_coords, rotation_matrix)
 
         screen_coords = screen_coords + detector_pos
-        return screen_coords
+
+        screen_surface = surface_type.get_surface_definition(screen_coords, w, h)
+
+        return screen_coords, screen_surface
 
     def _rotation_matrix(self, axis, theta):
         """
@@ -119,14 +157,14 @@ class Scene:
             raise TypeError("Only Elements, Sources, and Detectors can be added to Scenes!")
 
         return self
-        
+
     def raytrace(self):
         self.start_time = time.perf_counter()
 
         # TODO re-work as distinct processes or threads
         for detector in self.detectors:
 
-            detector.pixels = self.create_screen_coord(detector.width, detector.height, detector.pointing_direction, detector.position)
+            detector.pixels, detector.surface = self.create_screen_coord(detector.surface_type, detector.width, detector.height, detector.pointing_direction, detector.position, detector.screen_width, detector.screen_height)
             pixel_incident_rays: Vector = self.compute_ray_directions(detector, detector.pixels)
 
             # ray debugger
@@ -417,7 +455,7 @@ class Scene:
                 if ray_within_volume[element] and bounce < BOUNCE_COUNT:
 
                     surface_normal_at_intersection: Vector = element.compute_inward_normal(intersection_point)
-                    intersection_point_with_standoff: Vector = intersection_point - surface_normal_at_intersection * 1e-5
+                    intersection_point_with_standoff: Vector = intersection_point - surface_normal_at_intersection * self.standoff_distance
                     
                     transmitted_ray = self._transmitted_ray(
                             incident_ray,
@@ -440,7 +478,7 @@ class Scene:
                 if (element.transparent and not ray_within_volume[element] and recursion_enum not in ['TRANSMISSION-IN', 'SUBSURFACE-REFLECTION']) and bounce < BOUNCE_COUNT:
                         
                     surface_normal_at_intersection: Vector = element.compute_outward_normal(intersection_point)
-                    intersection_point_with_standoff: Vector = intersection_point - surface_normal_at_intersection * 1e-5
+                    intersection_point_with_standoff: Vector = intersection_point - surface_normal_at_intersection * self.standoff_distance
                     
                     transmitted_ray = self._transmitted_ray(
                             incident_ray,
@@ -465,7 +503,7 @@ class Scene:
                     self.ray_debugger_reverse.add_vector(start_point=start_point, end_point=intersection_point, color=(255,0,0)) # subsurface reflected ray (red)
 
                     surface_normal_at_intersection: Vector = element.compute_inward_normal(intersection_point)
-                    intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * 1e-5
+                    intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * self.standoff_distance
                     ray_data = detector._transmission_model(element, start_point, intersection_point)
                     rays += ray_data.place(hit)
 
@@ -474,7 +512,7 @@ class Scene:
                     self.ray_debugger_reverse.add_vector(start_point=start_point, end_point=intersection_point, color=(0,255,255)) # transmitted ray (cyan)
 
                     surface_normal_at_intersection: Vector = element.compute_inward_normal(intersection_point)
-                    intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * 1e-5
+                    intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * self.standoff_distance
                     ray_data = detector._transmission_model(element, start_point, intersection_point)
                     rays += ray_data.place(hit)
 
@@ -483,7 +521,7 @@ class Scene:
                     self.ray_debugger_reverse.add_vector(start_point=start_point, end_point=intersection_point, color=(0,0,255)) # surface reflected ray (blue)
 
                     surface_normal_at_intersection: Vector = element.compute_outward_normal(intersection_point)
-                    intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * 1e-5
+                    intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * self.standoff_distance
 
                 direction_to_origin_unit: Vector = (detector.position - intersection_point).norm()
 

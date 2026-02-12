@@ -57,6 +57,12 @@ class ConcreteRayDebugger(RayDebugger):
         self.screenshot_counter = 0
         self.timestamp = datetime.datetime.now().strftime("%m%d%y%H%M%S")
 
+        # circles
+        self.circles = list()
+
+        # squares
+        self.squares = list()
+
         # vectors
         self.shaft_radius = shaft_radius
         self.head_radius = head_radius
@@ -173,6 +179,52 @@ class ConcreteRayDebugger(RayDebugger):
         
         m = inspect.currentframe().f_code.co_name
         raise TypeError(f"Unknown element inside call: {self.__class__.__name__}.{m}")
+    
+    def add_square(self, p1, p2, p3, p4, color=(0, 0, 0)):
+        """
+        Add a square to the visualization using four points.
+        
+        Args:
+            p1, p2, p3, p4: Four points defining the square (Vectors or tuples)
+            color: RGB color tuple (0-255 for each component)
+        """
+
+        points = list()
+        for p in [p1, p2, p3, p4]:
+            if isinstance(p, Vector):
+                points.append(p.components())
+            else:
+                points.append(p)
+        
+        self.squares.append({
+            'points': points,
+            'color': color
+        })
+    
+    def add_circle(self, center, radius, normal, color=(0, 0, 0), resolution=50):
+        """
+        Add a circle to the visualization.
+        
+        Args:
+            center: Center point of the circle (Vector or tuple)
+            normal: vector normal to circle's face (Vector or tuple)
+            radius: radius of circle
+            color: RGB color tuple (0-255 for each component)
+            resolution: Number of line segments used to draw the circle
+        """
+
+        if isinstance(center, Vector):
+            center = center.components()
+        if isinstance(normal, Vector):
+            normal = normal.components()
+        
+        self.circles.append({
+            'center': center,
+            'normal': normal,
+            'radius': radius,
+            'color': color,
+            'resolution': resolution
+        })
 
     def _insert_vector(self, start_point, end_point, color_scalar):
 
@@ -212,6 +264,54 @@ class ConcreteRayDebugger(RayDebugger):
         renderer = self.vtk.vtkRenderer()
         render_window = self.vtk.vtkRenderWindow()
         render_window.AddRenderer(renderer)
+
+        # Circles
+        for circle_data in self.circles:
+            circle_source = self.vtk.vtkRegularPolygonSource()
+            circle_source.SetNumberOfSides(circle_data['resolution'])
+            circle_source.SetCenter(circle_data['center'])
+            circle_source.SetNormal(circle_data['normal'])
+            circle_source.SetRadius(circle_data['radius'])
+            
+            circle_mapper = self.vtk.vtkPolyDataMapper()
+            circle_mapper.SetInputConnection(circle_source.GetOutputPort())
+            
+            circle_actor = self.vtk.vtkActor()
+            circle_actor.SetMapper(circle_mapper)
+            color = circle_data['color']
+            circle_actor.GetProperty().SetColor(color[0]/255, color[1]/255, color[2]/255)
+            
+            renderer.AddActor(circle_actor)
+
+        # Squares
+        for square_data in self.squares:
+            points = square_data['points']
+            color = square_data['color']
+            
+            polygon_points = self.vtk.vtkPoints()
+            for point in points:
+                polygon_points.InsertNextPoint(point)
+            
+            polygon = self.vtk.vtkPolygon()
+            polygon.GetPointIds().SetNumberOfIds(4)
+            for i in range(4):
+                polygon.GetPointIds().SetId(i, i)
+            
+            polygons = self.vtk.vtkCellArray()
+            polygons.InsertNextCell(polygon)
+            
+            polygon_data = self.vtk.vtkPolyData()
+            polygon_data.SetPoints(polygon_points)
+            polygon_data.SetPolys(polygons)
+            
+            mapper = self.vtk.vtkPolyDataMapper()
+            mapper.SetInputData(polygon_data)
+            
+            actor = self.vtk.vtkActor()
+            actor.SetMapper(mapper)
+            actor.GetProperty().SetColor(color[0]/255, color[1]/255, color[2]/255)
+            
+            renderer.AddActor(actor)
  
         # points
         if self.points.GetNumberOfPoints() > 0:

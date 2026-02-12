@@ -5,7 +5,9 @@ from numpy.typing import NDArray
 from PIL import Image
 
 from ..math.vector import Vector
-from ..element.element import SceneObject, Source
+from .source import Source
+from .shape import Shape
+from .shape import Square
 
 import logging
 from luminous.src.utilities.logconfig import setup_logging
@@ -13,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class Detector(ABC):
-    def __init__(self, width: int, height: int, position: Vector, pointing_direction: Vector, surface_type, screen_width=2.0, screen_height=None):
+    def __init__(self, width: int, height: int, position: Vector, pointing_direction: Vector, screen_width=2.0, screen_height=None):
         '''
         Parameters:
             _data (Vector): Detector's accumulated data, called directly from within `Scene`
@@ -27,7 +29,6 @@ class Detector(ABC):
         self._reverse_trace_data = None
         self._forward_trace_data = None
         self.pixels = None
-        self.surface_type = surface_type
         self.position = position
         self.width = width
         self.height = height
@@ -37,7 +38,7 @@ class Detector(ABC):
 
     @abstractmethod
     def _reflection_model(  self, 
-                            element: SceneObject,
+                            element: Shape,
                             intersection_point: Vector,
                             surface_normal_at_intersection: Vector, 
                             direction_to_origin_unit: Vector, 
@@ -62,7 +63,7 @@ class Detector(ABC):
 
     @abstractmethod
     def _transmission_model(self, 
-                            element: SceneObject,
+                            element: Shape,
                             initial_intersection: Vector,
                             final_intersection: Vector,
                             transmission_weights: NDArray[np.number]):
@@ -97,55 +98,13 @@ class Detector(ABC):
         pass
 
     @abstractmethod
-    def intersect(self):
+    def _compute_initial_ray_directions(self):
+        '''
+        Compute initial ray trajectories FROM a detector. Used in reverse traces only.
+        '''
         pass
 
-class Square:
-
-    def __init__(self, top_left, top_right, bottom_left, bottom_right):
-        self.top_left = top_left
-        self.top_right = top_right
-        self.bottom_left = bottom_left
-        self.bottom_right = bottom_right
-
-    @classmethod
-    def get_surface_definition(cls, detector_coordinates: Vector, detector_pixel_width: int, detector_pixel_height: int):
-
-        idx_top_left = 0
-        idx_top_right = detector_pixel_width - 1
-        idx_bottom_left = (detector_pixel_height - 1) * detector_pixel_width
-        idx_bottom_right = detector_pixel_height * detector_pixel_width - 1
-
-        top_left = Vector(
-                np.array([detector_coordinates.x[idx_top_left]]),
-                np.array([detector_coordinates.y[idx_top_left]]),
-                np.array([detector_coordinates.z[idx_top_left]]) )
-        top_right = Vector(
-                np.array([detector_coordinates.x[idx_top_right]]),
-                np.array([detector_coordinates.y[idx_top_right]]),
-                np.array([detector_coordinates.z[idx_top_right]]) )
-        bottom_left = Vector(
-                np.array([detector_coordinates.x[idx_bottom_right]]),
-                np.array([detector_coordinates.y[idx_bottom_right]]),
-                np.array([detector_coordinates.z[idx_bottom_right]]))
-        bottom_right = Vector(
-                np.array([detector_coordinates.x[idx_bottom_left]]),
-                np.array([detector_coordinates.y[idx_bottom_left]]),
-                np.array([detector_coordinates.z[idx_bottom_left]]))
-
-        instance = cls(top_left, top_right, bottom_left, bottom_right)
-        return instance
-    
-class Circle:
-
-    def __init__(self):
-        raise NotImplemented
-
-    @classmethod
-    def get_surface_definition(self, detector_coordinates: Vector, detector_pixel_width: int, detector_pixel_height: int):
-        raise NotImplemented
-
-class Camera(Detector):
+class Camera(Detector, Square):
     '''
     Simple simulated camera using Blinn-Phong shading for pixels.
 
@@ -153,8 +112,7 @@ class Camera(Detector):
             where s is a float and n is a float
     '''
     def __init__(self, width: int, height: int, position: Vector, pointing_direction: Vector, screen_width: float, screen_height: float):
-        surface_type = Square
-        super().__init__(width, height, position, pointing_direction, surface_type, screen_width, screen_height)
+        super().__init__(width, height, position, pointing_direction, screen_width, screen_height)
 
         # unilluminated pixels display this noise floor
         self.ambient_dark = Vector(0, 0, 0)
@@ -225,5 +183,14 @@ class Camera(Detector):
 
         return Image.merge("RGB", rgb)
     
-    def intersect(self):
-        pass
+    def _compute_initial_ray_directions(self, detector_screen: Vector):
+
+        initial_ray_dir = (detector_screen - self.position)
+
+        ray_dir_x = initial_ray_dir.x
+        ray_dir_y = initial_ray_dir.y
+        ray_dir_z = initial_ray_dir.z + self.pointing_direction.z
+
+        ray_dir = Vector(ray_dir_x, ray_dir_y, ray_dir_z).norm()
+
+        return ray_dir

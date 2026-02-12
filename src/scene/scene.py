@@ -8,8 +8,9 @@ from abc import ABC
 
 from ..math.vector import Vector
 from ..math.tools import extract
-from ..detector.detector import Detector
-from ..element.element import Source, Element
+from ..element.detector import Detector
+from ..element.element import Element
+from ..element.source import Source
 from luminous.src.utilities.ray_debugger import NullRayDebugger, ConcreteRayDebugger
 
 from luminous.src.utilities.logconfig import setup_logging
@@ -21,10 +22,11 @@ BOUNCE_COUNT = 2
 
 class Scene:
 
-    def __init__(self, index_of_refraction=1, log_level=logging.CRITICAL, log_file="luminous.log", standoff_distance=1e-5) -> None:
+    def __init__(self, reverse_trace=True, index_of_refraction=1, log_level=logging.CRITICAL, log_file="luminous.log", standoff_distance=1e-5) -> None:
         setup_logging(name='luminous', level=log_level, log_file=log_file)
         self.start_time = None
         self.refractive_index = index_of_refraction
+        self.reverse_trace = reverse_trace
         self.elements = list()
         self.detectors = list()
         self.sources = list()
@@ -48,107 +50,13 @@ class Scene:
             self.ray_debugger_forward.plot(path=path, filename=filename, display_3d_plot=display_3d_plot)
         atexit.register(plot_ray_trace_wrap_user_args)
 
-    def compute_ray_directions(self, detector: Detector, detector_screen: Vector):
-
-        initial_ray_dir = (detector_screen - detector.position)
-
-        ray_dir_x = initial_ray_dir.x
-        ray_dir_y = initial_ray_dir.y
-        ray_dir_z = initial_ray_dir.z + detector.pointing_direction.z
-
-        ray_dir = Vector(ray_dir_x, ray_dir_y, ray_dir_z).norm()
-
-        return ray_dir
-
-    def create_screen_coord(
-        self,
-        surface_type, # an abstract class method
-        w: int,
-        h: int,
-        detector_pointing_direction: Vector,
-        detector_pos: Vector,
-        screen_width: float = 2.0,
-        screen_height: float = None,
-        vertical_screen_shift: float = 0.0,
-        horizontal_screen_shift: float = 0.0,
-        rotation: float = 0.0,
-    ) -> Vector:
-        """
-        Generates a set of 3D coordinates for each pixel on the detection screen.
-
-        The detector screen is a rectangular plane in 3D space, centered at `detector_pos` and oriented perpendicular to `detector_pointing_direction`.
-        The screen's physical size is specified by `screen_width` (and optionally `screen_height`); pixel centers are uniformly distributed across this surface.
-
-        Args:
-            w (int): Number of pixels along the horizontal (width/X) direction of the screen.
-            h (int): Number of pixels along the vertical (height/Y) direction of the screen.
-            detector_pointing_direction (Vector): A unit vector specifying the normal direction the detector screen faces.
-            detector_pos (Vector): The 3D position of the center of the detector screen.
-            screen_width (float, optional): The physical width (X-direction) of the detector screen in scene units. Default is 2.0.
-            screen_height (float, optional): The physical height (Y-direction) of the detector screen. If None, calculated from screen_width and detector aspect ratio.
-            vertical_screen_shift (float, optional): Shifts the screen vertically (in the local Y direction) relative to `detector_pos`. Default is 0.0.
-            horizontal_screen_shift (float, optional): Shifts the screen horizontally (in the local X direction) relative to `detector_pos`. Default is 0.0.
-            rotation (float, optional): Rotates the screen about its normal (in radians). Default is 0.0.
-
-        Returns:
-            Vector: A Vector object containing the 3D coordinates for each pixel on the screen, suitable for ray tracing.
-        """
-        
-        aspect_ratio = w / h
-        if screen_height is None:
-            screen_height = screen_width / aspect_ratio
-
-        screen = (
-            -screen_width / 2 + horizontal_screen_shift,
-            screen_height / 2 + vertical_screen_shift,
-            screen_width / 2 + horizontal_screen_shift,
-            -screen_height / 2 + vertical_screen_shift
-        )
-        w_row = np.linspace(screen[0], screen[2], w)
-        h_col = np.linspace(screen[1], screen[3], h)
-        rows = np.tile(w_row, h)
-        columns = np.repeat(h_col, w)
-        d = np.zeros(len(rows))
-
-        screen_coords = Vector(rows, columns, d)
-
-        if rotation != 0:
-            rotation_matrix = self._rotation_matrix(detector_pointing_direction, rotation)
-            screen_coords = self._apply_rotation(screen_coords, rotation_matrix)
-
-        screen_coords = screen_coords + detector_pos
-
-        screen_surface = surface_type.get_surface_definition(screen_coords, w, h)
-
-        return screen_coords, screen_surface
-
-    def _rotation_matrix(self, axis, theta):
-        """
-        Return the rotation matrix associated with counterclockwise rotation about
-        the given axis by theta radians.
-        """
-        axis = axis.norm()
-        a = np.cos(theta / 2.0)
-        b, c, d = -axis.x * np.sin(theta / 2.0), -axis.y * np.sin(theta / 2.0), -axis.z * np.sin(theta / 2.0)
-        aa, bb, cc, dd = a * a, b * b, c * c, d * d
-        bc, ad, ac, ab, bd, cd = b * c, a * d, a * c, a * b, b * d, c * d
-        return np.array([[aa + bb - cc - dd, 2 * (bc + ad), 2 * (bd - ac)],
-                        [2 * (bc - ad), aa + cc - bb - dd, 2 * (cd + ab)],
-                        [2 * (bd + ac), 2 * (cd - ab), aa + dd - bb - cc]])
-
-    def _apply_rotation(self, vector, rotation_matrix):
-        """
-        Apply the rotation matrix to the vector.
-        """
-        original_vectors = np.stack((vector.x, vector.y, vector.z), axis=-1)
-        rotated_vectors = np.dot(original_vectors, rotation_matrix.T)
-        return Vector(rotated_vectors[:, 0], rotated_vectors[:, 1], rotated_vectors[:, 2])
-
     def __iadd__(self, obj):
         if isinstance(obj, Element):
             self.elements.append(obj)
-            self.ray_debugger_reverse.add_element(obj, color=(255,215,0)) # scene elements (gold)
-            self.ray_debugger_forward.add_element(obj, color=(255,215,0)) # scene elements (gold)
+            if self.reverse_trace:
+                self.ray_debugger_reverse.add_element(obj, color=(255,215,0)) # scene elements (gold)
+            else:
+                self.ray_debugger_forward.add_element(obj, color=(255,215,0)) # scene elements (gold)
         elif isinstance(obj, Source):
             self.sources.append(obj)
         elif isinstance(obj, Detector):
@@ -161,31 +69,40 @@ class Scene:
     def raytrace(self):
         self.start_time = time.perf_counter()
 
-        # TODO re-work as distinct processes or threads
-        for detector in self.detectors:
+        # reverse ray trace, from detector to source
+        if self.reverse_trace:
 
-            detector.pixels, detector.surface = self.create_screen_coord(detector.surface_type, detector.width, detector.height, detector.pointing_direction, detector.position, detector.screen_width, detector.screen_height)
-            pixel_incident_rays: Vector = self.compute_ray_directions(detector, detector.pixels)
+            for detector in self.detectors:
 
-            # ray debugger
-            detector_dir_translate: Vector = detector.position + detector.pointing_direction
-            self.ray_debugger_reverse.add_point(detector.position, color=(0, 255, 0))
-            self.ray_debugger_reverse.add_vector(start_point=detector.position, end_point=detector_dir_translate, color=(255, 0, 0))
-            self.ray_debugger_reverse.add_point(detector.pixels, color=(255,0,0))
+                detector.pixels = detector.create_screen_coord(detector.width, detector.height, detector.pointing_direction, detector.position, detector.screen_width, detector.screen_height)
+                detector.surface = detector.compute_surface_definition(detector.pixels, detector.width, detector.height)
+                pixel_rays = detector._compute_initial_ray_directions(detector.pixels)
 
-            logger.debug(f"REVERSE TRACE")
-            ray_within_volume = {e: False for e in self.elements}
-            detector._reverse_trace_data = self._reverse_recursive_trace(detector=detector, origin=detector.pixels, direction=pixel_incident_rays, bounce=0, recursion_enum="START", ray_within_volume=ray_within_volume)
+                # ray debugger
+                detector_pointing_dir: Vector = detector.position + detector.pointing_direction
+                self.ray_debugger_reverse.add_point(detector.position, color=(0, 255, 0))
+                self.ray_debugger_reverse.add_vector(start_point=detector.position, end_point=detector_pointing_dir, color=(255, 0, 0))
+                self.ray_debugger_reverse.add_point(detector.pixels, color=(255,0,0))
 
-        for source in self.sources:
-
-            for detector in source.ray_emission_direction.keys():
-
-                # TODO ray debugger
-
-                logger.debug(f"FORWARD TRACE")
+                logger.debug(f"REVERSE TRACE")
                 ray_within_volume = {e: False for e in self.elements}
-                detector._forward_trace_data = self._forward_recursive_trace(source=source, detector=detector, origin=source.ray_emission_origin[detector], direction=source.ray_emission_direction[detector], bounce=0, recursion_enum="START", ray_within_volume=ray_within_volume)
+                detector._reverse_trace_data = self._reverse_recursive_trace(detector=detector, origin=detector.pixels, direction=pixel_rays, bounce=0, recursion_enum="START", ray_within_volume=ray_within_volume)
+
+        # forward ray trace, from source to detector
+        if not self.reverse_trace:
+
+            for source in self.sources:
+                for detector in self.detectors:
+
+                    # ray debugger
+                    source_pointing_dir: Vector = source.position + source.pointing_direction
+                    self.ray_debugger_reverse.add_point(source.position, color=(0, 255, 100))
+                    self.ray_debugger_reverse.add_vector(start_point=source.position, end_point=source_pointing_dir, color=(255, 100, 0))
+                    self.ray_debugger_reverse.add_point(source.pixels, color=(255,100,0))
+
+                    logger.debug(f"FORWARD TRACE")
+                    ray_within_volume = {e: False for e in self.elements}
+                    detector._forward_trace_data = self._forward_recursive_trace(source=source, detector=detector, origin=source.ray_emission_origin[detector], direction=source.ray_emission_direction[detector], bounce=0, recursion_enum="START", ray_within_volume=ray_within_volume)
 
     def _forward_recursive_trace(self, source: Source, detector: Detector, origin: Vector, direction: Vector, bounce: int, recursion_enum: str, ray_within_volume: dict):
         
@@ -198,13 +115,11 @@ class Scene:
         # # source illumination
         # #
 
-        # intersection_point_with_standoff: Vector = origin + direction * 0.001
-
         # for source in self.sources:
 
-        #     direction_to_source: Vector = source.center - intersection_point_with_standoff
+        #     direction_to_source: Vector = source.center - origin
         #     direction_to_source_unit: Vector = direction_to_source.norm()
-        #     intersections_blocking_source: list[NDArray[np.float64]] = [element.intersect(intersection_point_with_standoff, direction_to_source_unit) for element in self.elements]
+        #     intersections_blocking_source: list[NDArray[np.float64]] = [element.intersect(origin, direction_to_source_unit) for element in self.elements]
         #     minimum_distances_with_standoff: NDArray[np.float64] = reduce(np.minimum, intersections_blocking_source)
         #     distances_to_source = direction_to_source.magnitude()
         #     intersection_point_illuminated: NDArray[np.bool_] = minimum_distances_with_standoff >= distances_to_source
@@ -268,10 +183,10 @@ class Scene:
                 # transmission from volume
                 #
 
-                if ray_within_volume[element] and bounce < 2:
+                if ray_within_volume[element] and bounce < BOUNCE_COUNT:
 
                     surface_normal_at_intersection: Vector = element.compute_inward_normal(intersection_point)
-                    intersection_point_with_standoff: Vector = intersection_point - surface_normal_at_intersection * 0.001
+                    intersection_point_with_standoff: Vector = intersection_point - surface_normal_at_intersection * self.standoff_distance
                     
                     transmitted_ray = self._transmitted_ray(
                             incident_ray,
@@ -291,16 +206,10 @@ class Scene:
                 # transmission into volume
                 #
 
-                if recursion_enum == 'TRANSMISSION-IN':
-
-                    self.ray_debugger_forward.add_vector(start_point=start_point, end_point=intersection_point, color=(0,255,255)) # transmitted ray (cyan)
-                    ray_data = detector._transmission_model(element, start_point, intersection_point)
-                    rays += ray_data.place(hit)
-
-                if (element.transparent and not ray_within_volume[element] and not recursion_enum=='TRANSMISSION-IN') and bounce < 2:
+                if (element.transparent and not ray_within_volume[element] and recursion_enum not in ['TRANSMISSION-IN', 'SUBSURFACE-REFLECTION']) and bounce < BOUNCE_COUNT:
                         
                     surface_normal_at_intersection: Vector = element.compute_outward_normal(intersection_point)
-                    intersection_point_with_standoff: Vector = intersection_point - surface_normal_at_intersection * 0.001
+                    intersection_point_with_standoff: Vector = intersection_point - surface_normal_at_intersection * self.standoff_distance
                     
                     transmitted_ray = self._transmitted_ray(
                             incident_ray,
@@ -317,67 +226,69 @@ class Scene:
                     rays += ray_data.place(hit)
 
                 #
-                # surface reflection
+                # surface and subsurface reflection
                 #
 
-                if not recursion_enum == 'TRANSMISSION-IN':
+                if recursion_enum == 'SUBSURFACE-REFLECTION':
 
-                    surface_normal_at_intersection: Vector = element.compute_outward_normal(intersection_point)
-
-                    intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * 0.0001
-                    direction_to_origin_unit: Vector = (detector.position - intersection_point).norm()
-
-                    if recursion_enum == 'SUBSURFACE-REFLECTION':
-                        self.ray_debugger_forward.add_vector(start_point=start_point, end_point=intersection_point_with_standoff, color=(255,0,0)) # subsurface reflected ray (red)
-                    else:
-                        self.ray_debugger_forward.add_vector(start_point=start_point, end_point=intersection_point_with_standoff, color=(0,0,255)) # surface reflected ray (blue)
-
-                    for source in self.sources:
-
-                        direction_to_source: Vector = source.center - intersection_point_with_standoff
-                        direction_to_source_unit: Vector = direction_to_source.norm()
-                        intersections_blocking_source: list[NDArray[np.float64]] = [element.intersect(intersection_point_with_standoff, direction_to_source_unit) for element in self.elements]
-                        minimum_distances_with_standoff: NDArray[np.float64] = reduce(np.minimum, intersections_blocking_source)
-                        distances_to_source = direction_to_source.magnitude()
-                        intersection_point_illuminated: NDArray[np.bool_] = minimum_distances_with_standoff >= distances_to_source
-
-                        if np.sum(intersection_point_illuminated) < 1:
-                            continue
-
-                        self.intersection_map.append({'source': source, 'direction_to_source_unit': direction_to_source_unit, 'intersection_point_illuminated': intersection_point_illuminated})
-
-                    ray_data = detector._reflection_model(element,
-                                                            intersection_point,
-                                                            surface_normal_at_intersection,
-                                                            direction_to_origin_unit,
-                                                            self.intersection_map)
-                    rays += ray_data.place(hit)
-                                
-                    self.intersection_map.clear()
-
-                    if bounce < 2:
-                        logger.debug(f"SURFACE-REFLECTION. counter={self.counter}. bounce={bounce}. current enum={recursion_enum}")
-                        reflected_ray = self._reflected_ray(incident_ray, surface_normal_at_intersection)                
-                        ray_data = self._forward_recursive_trace(source, detector, intersection_point_with_standoff, reflected_ray, bounce + 1, recursion_enum="SURFACE-REFLECTION", ray_within_volume=ray_within_volume)
-                        rays += ray_data.place(hit)
-
-                #
-                # sub-surface reflection
-                #
-
-                # TODO unclear if subsurface reflected rays transmit from element to scene before confirming rays can see source
-
-                if recursion_enum == 'TRANSMISSION-IN':
+                    self.ray_debugger_reverse.add_vector(start_point=start_point, end_point=intersection_point, color=(255,0,0)) # subsurface reflected ray (red)
 
                     surface_normal_at_intersection: Vector = element.compute_inward_normal(intersection_point)
+                    intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * self.standoff_distance
+                    ray_data = detector._transmission_model(element, start_point, intersection_point)
+                    rays += ray_data.place(hit)
 
-                    intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * 0.0001
-                    direction_to_origin_unit: Vector = (detector.position - intersection_point).norm()
+                elif recursion_enum == 'TRANSMISSION-IN':
+
+                    self.ray_debugger_reverse.add_vector(start_point=start_point, end_point=intersection_point, color=(0,255,255)) # transmitted ray (cyan)
+
+                    surface_normal_at_intersection: Vector = element.compute_inward_normal(intersection_point)
+                    intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * self.standoff_distance
+                    ray_data = detector._transmission_model(element, start_point, intersection_point)
+                    rays += ray_data.place(hit)
+
+                else:
+
+                    self.ray_debugger_reverse.add_vector(start_point=start_point, end_point=intersection_point, color=(0,0,255)) # surface reflected ray (blue)
+
+                    surface_normal_at_intersection: Vector = element.compute_outward_normal(intersection_point)
+                    intersection_point_with_standoff: Vector = intersection_point + surface_normal_at_intersection * self.standoff_distance
+
+                direction_to_origin_unit: Vector = (detector.position - intersection_point).norm()
+
+                # for source in self.sources:
+
+                #     direction_to_source: Vector = source.center - intersection_point
+                #     direction_to_source_unit: Vector = direction_to_source.norm()
+                #     intersections_blocking_source: list[NDArray[np.float64]] = [element.intersect(intersection_point_with_standoff, direction_to_source_unit) for element in self.elements]
+                #     minimum_distances_with_standoff: NDArray[np.float64] = reduce(np.minimum, intersections_blocking_source)
+                #     distances_to_source = direction_to_source.magnitude()
+                #     intersection_point_illuminated: NDArray[np.bool_] = minimum_distances_with_standoff >= distances_to_source
+
+                #     if np.sum(intersection_point_illuminated) < 1:
+                #         continue
+
+                #     self.intersection_map.append({'source': source, 'direction_to_source_unit': direction_to_source_unit, 'intersection_point_illuminated': intersection_point_illuminated})
+
+                ray_data = detector._reflection_model(element,
+                                                        intersection_point,
+                                                        surface_normal_at_intersection,
+                                                        direction_to_origin_unit,
+                                                        self.intersection_map)
+                rays += ray_data.place(hit)
+                            
+                # self.intersection_map.clear()
+
+                if bounce < BOUNCE_COUNT:
                     
-                    if bounce < 2:
-                        logger.debug(f"SUBSURFACE-REFLECTION. counter={self.counter}. bounce={bounce}")
-                        reflected_ray = self._reflected_ray(incident_ray, surface_normal_at_intersection)                
-                        ray_data = self._forward_recursive_trace(source, detector, intersection_point_with_standoff, reflected_ray, bounce + 1, recursion_enum="SUBSURFACE-REFLECTION", ray_within_volume=ray_within_volume)
+                    e = "SUBSURFACE-REFLECTION" if recursion_enum in ["TRANSMISSION-IN", "SUBSURFACE-REFLECTION"] else "SURFACE-REFLECTION"
+                    logger.debug(f"SURFACE-REFLECTION. counter={self.counter}. bounce={bounce}. current enum={recursion_enum}")
+                    reflected_ray = self._reflected_ray(incident_ray, surface_normal_at_intersection)                
+                    ray_data = self._reverse_recursive_trace(detector, intersection_point_with_standoff, reflected_ray, bounce + 1, recursion_enum=e, ray_within_volume=ray_within_volume)
+                    rays += ray_data.place(hit)
+
+                    # NOTE the existing `transmission from volume` is sufficient to allow rays to transmit and reflect for enum `SUBSURFACE-REFLECTION`
+
 
         logger.debug(f"RETURNING. counter={self.counter}. enum={recursion_enum}. current enum={recursion_enum}")
         return rays
@@ -422,10 +333,9 @@ class Scene:
                         
             self.intersection_map.clear()
 
-            # store rays for forward tracing
-            r = (origin_point_illuminated - intersection_to_source).norm()
-            source._enqueue_rays(origin=intersection_to_source, direction=r, detector=detector)
-            # TODO add abstract method to "filter" rays based upon emission characteristics
+            # # store rays for forward tracing
+            # r = (origin_point_illuminated - intersection_to_source).norm()
+            # source._enqueue_rays(origin=intersection_to_source, direction=r, detector=detector)
 
         #
         # reflections and transmissions

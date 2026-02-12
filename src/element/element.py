@@ -2,12 +2,8 @@ from abc import ABC, abstractmethod
 import numpy as np
 
 from ..math.vector import Vector
+from .shape import Sphere
 
-FARAWAY = 1.0e39
-
-#
-# not for user instantiation
-#
 
 class Element(ABC):
 
@@ -33,107 +29,12 @@ class Element(ABC):
                 raise AttributeError(f"Attribute '{key}' already exists in the instance and cannot be overwritten.")
             setattr(self, key, value)
 
-class Source(ABC):
-
-    '''An object in the scene which does emit light'''
-    
-    def __init__(self):
-        self.ray_emission_direction = dict()
-        self.ray_emission_origin = dict()
-
-    def _enqueue_rays(self, origin: Vector, direction: Vector, detector):
-        
-        if self.ray_emission_direction.get(detector) is None:
-            self.ray_emission_direction[detector] = direction
-            self.ray_emission_origin[detector] = origin
-        
-        else:
-            self.ray_emission_direction[detector]._merge(direction)
-            self.ray_emission_origin[detector]._merge(origin)
-
-class SceneObject(ABC):
-
-    @abstractmethod
-    def intersect(self, origin: Vector, direction: Vector):
-        '''
-        Calculate intersection of a ray with the object.
-        '''
-        pass
-
     @abstractmethod
     def surface_color(self, M: Vector) -> Vector:
         '''
         Calculate or otherwise return the surface color of the object at point of intersection.
         '''
         pass
-
-    @abstractmethod
-    def compute_outward_normal(self, intersection_point: Vector) -> Vector:
-        '''
-        Compute normal vector, facing away from the object, associated with incident Vector's point of intersection.
-        '''
-        pass
-
-    @abstractmethod
-    def compute_inward_normal(self, intersection_point: Vector) -> Vector:
-        '''
-        Compute normal vector, facing into the object, associated with incident Vector's point of intersection.
-        '''
-        pass
-
-class Circle(SceneObject):
-    def __init__(self, center: Vector, radius: float):
-        self.radius = radius
-        self.center = center
-
-    def intersect(self, origin: Vector, direction: Vector):
-        raise NotImplementedError()
-
-    def surface_color(self, M: Vector) -> Vector:
-        return self.color
-
-    def compute_outward_normal(self, intersection_point: Vector) -> Vector:
-        raise NotImplementedError()
-    
-    def compute_inward_normal(self, intersection_point: Vector) -> Vector:
-        raise NotImplementedError()
-
-class Sphere(SceneObject):
-    def __init__(self, center: Vector, radius: float):
-        self.radius = radius
-        self.center = center
-
-    def intersect(self, origin: Vector, direction: Vector):
-        b = 2 * direction.dot(origin - self.center)
-        c = (
-            abs(self.center)
-            + abs(origin)
-            - 2 * self.center.dot(origin)
-            - self.radius**2
-        )
-        discriminant = (b**2) - (4 * c)
-        sq = np.sqrt(np.maximum(0, discriminant))
-        h0 = (-b - sq) / 2
-        h1 = (-b + sq) / 2
-        h = np.where((h0 > 0) & (h0 < h1), h0, h1)
-        pred = (discriminant > 0) & (h > 0)
-        val = np.where(pred, h, FARAWAY)
-        return val
-
-    def surface_color(self, M: Vector) -> Vector:
-        return self.color
-
-    def compute_outward_normal(self, intersection_point: Vector) -> Vector:
-        normal_at_intersection = (intersection_point - self.center).norm()
-        return normal_at_intersection
-    
-    def compute_inward_normal(self, intersection_point: Vector) -> Vector:
-        normal_at_intersection = (self.center - intersection_point).norm()
-        return normal_at_intersection
-    
-#
-# user elements for scenes
-#
     
 class SphereElement(Element, Sphere):
     def __init__(self, center: Vector, radius: float, color: Vector, transparent: bool = False, refractive_index: float = 1.0, user_params=None):
@@ -144,7 +45,7 @@ class SphereElement(Element, Sphere):
         return super().intersect(origin, direction)
 
     def surface_color(self, M: Vector) -> Vector:
-        return super().surface_color(M)
+        return self.color
 
     def compute_outward_normal(self, intersection_point: Vector) -> Vector:
         return super().compute_outward_normal(intersection_point)
@@ -159,16 +60,4 @@ class CheckeredSphereElement(SphereElement):
 
     def surface_color(self, M: Vector) -> Vector:
         checker = ((M.x * 2).astype(int) % 2) == ((M.z * 2).astype(int) % 2)
-        return self.color * checker + self.checker_color * (1 - checker)
-
-#
-# user sources for scenes
-#
-
-class IsotropicSource(Source, Circle):
-    def __init__(self, center: Vector, radius: float, color: Vector, pointing_direction: Vector):
-        Source.__init__(self)
-        self.center = center
-        self.radius = radius
-        self.color = color
-        self.pointing_direction = None # semantics for isotropic sources. no specific pointing direction.        
+        return self.color * checker + self.checker_color * (1 - checker)    

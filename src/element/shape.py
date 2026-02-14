@@ -36,6 +36,8 @@ class Shape(ABC):
     def compute_surface_definition(self):
         '''
         Computes geometry to describe a SceneObject's extension in space (2D or 3D).
+        The surface definition of a Shape should be independent of the pixel definition.
+        As these methods might not be called together.
         '''
         pass
 
@@ -81,41 +83,35 @@ class Square(Shape):
         self.bottom_left = None
         self.bottom_right = None
 
-    def compute_surface_definition(self, detector_coordinates: Vector, detector_pixel_width: int, detector_pixel_height: int):
+    def compute_surface_definition(self):
         '''
-        Use this method to find the square that captures a set of points in a plane.
+        Use this method to describe the square plane in 3d space.
         '''
 
-        idx_top_left = 0
-        idx_top_right = detector_pixel_width - 1
-        idx_bottom_left = (detector_pixel_height - 1) * detector_pixel_width
-        idx_bottom_right = detector_pixel_height * detector_pixel_width - 1
+        # normal vector, already normalized
+        n = self.pointing_direction
 
-        self.top_left = Vector(
-                np.array([detector_coordinates.x[idx_top_left]]),
-                np.array([detector_coordinates.y[idx_top_left]]),
-                np.array([detector_coordinates.z[idx_top_left]]) )
-        self.top_right = Vector(
-                np.array([detector_coordinates.x[idx_top_right]]),
-                np.array([detector_coordinates.y[idx_top_right]]),
-                np.array([detector_coordinates.z[idx_top_right]]) )
-        self.bottom_left = Vector(
-                np.array([detector_coordinates.x[idx_bottom_right]]),
-                np.array([detector_coordinates.y[idx_bottom_right]]),
-                np.array([detector_coordinates.z[idx_bottom_right]]))
-        self.bottom_right = Vector(
-                np.array([detector_coordinates.x[idx_bottom_left]]),
-                np.array([detector_coordinates.y[idx_bottom_left]]),
-                np.array([detector_coordinates.z[idx_bottom_left]]))
+        if abs(n.y) < 0.9:
+            v_ref = Vector(0, 1, 0)
+        else:
+            v_ref = Vector(1, 0, 0)
+        
+        # right vector
+        u = n.cross(v_ref)
+        
+        # up vector
+        v = u.cross(n) 
+
+        half_w = self.screen_width / 2.0
+        half_h = self.screen_height / 2.0
+
+        self.top_left = self.position - (u * half_w) + (v * half_h)
+        self.top_right = self.position + (u * half_w) + (v * half_h)
+        self.bottom_left = self.position - (u * half_w) - (v * half_h)
+        self.bottom_right = self.position + (u * half_w) - (v * half_h)
         
     def create_screen_coord(
         self,
-        w: int,
-        h: int,
-        detector_pointing_direction: Vector,
-        detector_pos: Vector,
-        screen_width: float = 2.0,
-        screen_height: float = None,
         vertical_screen_shift: float = 0.0,
         horizontal_screen_shift: float = 0.0,
         rotation: float = 0.0,
@@ -123,23 +119,21 @@ class Square(Shape):
 
         '''
         Args:
-        w (int): Number of pixels along the horizontal (width/X) direction of the screen.
-        h (int): Number of pixels along the vertical (height/Y) direction of the screen.
-        detector_pointing_direction (Vector): A unit vector specifying the normal direction the detector screen faces.
-        detector_pos (Vector): The 3D position of the center of the detector screen.
-        screen_width (float, optional): The physical width (X-direction) of the detector screen in scene units. Default is 2.0.
-        screen_height (float, optional): The physical height (Y-direction) of the detector screen. If None, calculated from screen_width and detector aspect ratio.
         vertical_screen_shift (float, optional): Shifts the screen vertically (in the local Y direction) relative to `detector_pos`. Default is 0.0.
         horizontal_screen_shift (float, optional): Shifts the screen horizontally (in the local X direction) relative to `detector_pos`. Default is 0.0.
         rotation (float, optional): Rotates the screen about its normal (in radians). Default is 0.0.
 
         Returns:
-        Vector: A Vector object containing the 3D coordinates for each pixel on the screen, suitable for ray tracing.
+        Vector: A Vector object containing the 3D coordinates for each pixel on the screen
         '''
-        
-        aspect_ratio = w / h
-        if screen_height is None:
-            screen_height = screen_width / aspect_ratio
+
+        # superclass attributes
+        w: int = self.width
+        h: int = self.height
+        detector_pointing_direction: Vector = self.pointing_direction
+        detector_pos: Vector = self.position
+        screen_width: float = self.screen_width
+        screen_height: float = self.screen_height
 
         screen = (
             -screen_width / 2 + horizontal_screen_shift,
@@ -205,18 +199,56 @@ class Circle(Shape):
         self.center = center
 
     def compute_surface_definition(self):
+        # self.center, self.pointing_direction, and self.radius are sufficient to define the shape's plane
         pass
 
-    def create_screen_coord(self):
-        pass
+    def create_screen_coord(
+        self,
+        vertical_screen_shift: float = 0.0,
+        horizontal_screen_shift: float = 0.0,
+        rotation: float = 0.0,
+    ) -> Vector:
+        '''
+        Generates roughly evenly distributed 3D coordinates on the circular plane.
+        '''
+
+        # normal vector, already normalized
+        n = self.pointing_direction
+
+        if abs(n.y) < 0.9:
+            v_ref = Vector(0, 1, 0)
+        else:
+            v_ref = Vector(1, 0, 0)
+        
+        u = n.cross(v_ref)
+        v = u.cross(n)
+
+        # distribute points on a 2D disk using Fermat's spiral
+        i = np.arange(self.pixel_count)
+        golden_angle = np.pi * (3 - np.sqrt(5))
+        
+        # radius of each point (proportional to sqrt of index for even area distribution)
+        # scaled by the circle's actual radius
+        r = self.radius * np.sqrt(i / self.pixel_count)
+        theta = i * golden_angle + rotation
+
+        # convert polar (r, theta) to local 2D (x, y)
+        local_x = r * np.cos(theta) + horizontal_screen_shift
+        local_y = r * np.sin(theta) + vertical_screen_shift
+
+        # map 2D plane coordinates to 3D space
+        # point = center + (local_x * u_axis) + (local_y * v_axis)
+        screen_coords = self.position + (u * local_x) + (v * local_y)
+
+        return screen_coords
 
     def intersect(self, ray_origin_point: Vector, ray_direction_from_origin: Vector):
-        denom = self.normal.dot(ray_direction_from_origin)
+        denom = super.pointing_direction.dot(ray_direction_from_origin)
         if denom > 0:
             # ray parallel to plane
             return FARAWAY
 
-        t = self.normal.dot(self.center - ray_origin_point) / denom
+        t = super.pointing_direction.dot(self.center - ray_origin_point) / denom
         if t < 0:
             # intersection is behind the ray origin
             return FARAWAY
@@ -227,11 +259,8 @@ class Circle(Shape):
         else:
             return FARAWAY
 
-    def surface_color(self, M: Vector) -> Vector:
-        return self.color
-
     def compute_outward_normal(self, intersection_point: Vector) -> Vector:
-        raise NotImplementedError()
+        return super.pointing_direction
     
     def compute_inward_normal(self, intersection_point: Vector) -> Vector:
         raise NotImplementedError()
@@ -243,9 +272,15 @@ class Sphere(Shape):
         self.center = center
 
     def compute_surface_definition(self):
+        # self.center, and self.radius are sufficient to define the shape's volume
         pass
 
-    def create_screen_coord(self):
+    def create_screen_coord(
+        self,
+        vertical_screen_shift: float = 0.0,
+        horizontal_screen_shift: float = 0.0,
+        rotation: float = 0.0,
+    ) -> Vector:
         pass
 
     def intersect(self, ray_origin_point: Vector, ray_direction_from_origin: Vector):

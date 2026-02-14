@@ -72,10 +72,16 @@ class Scene:
         # reverse ray trace, from detector to source
         if self.reverse_trace:
 
+            for source in self.sources:
+                
+                # ray debugger
+                source.surface = source.compute_surface_definition()
+                # self.ray_debugger_reverse.add_source(source.surface, color=(0,50,150)) # TODO some issue with this
+
             for detector in self.detectors:
 
-                detector.pixels = detector.create_screen_coord(detector.width, detector.height, detector.pointing_direction, detector.position, detector.screen_width, detector.screen_height)
-                detector.surface = detector.compute_surface_definition(detector.pixels, detector.width, detector.height)
+                detector.pixels = detector.create_screen_coord()
+                detector.surface = detector.compute_surface_definition()
                 pixel_rays = detector._compute_initial_ray_directions(detector.pixels)
 
                 # ray debugger
@@ -92,6 +98,14 @@ class Scene:
         if not self.reverse_trace:
 
             for source in self.sources:
+
+                source.pixels = source.create_screen_coord()
+                source.surface = source.compute_surface_definition()
+                pixel_rays = source._compute_initial_ray_directions(source.pixels)
+
+                # ray debugger
+                self.ray_debugger_reverse.add_source(source.surface, color=(0,50,150))
+            
                 for detector in self.detectors:
 
                     # ray debugger
@@ -102,7 +116,7 @@ class Scene:
 
                     logger.debug(f"FORWARD TRACE")
                     ray_within_volume = {e: False for e in self.elements}
-                    detector._forward_trace_data = self._forward_recursive_trace(source=source, detector=detector, origin=source.ray_emission_origin[detector], direction=source.ray_emission_direction[detector], bounce=0, recursion_enum="START", ray_within_volume=ray_within_volume)
+                    detector._forward_trace_data = self._forward_recursive_trace(source=source, detector=detector, origin=source.ray_emission_origin[detector], direction=pixel_rays, bounce=0, recursion_enum="START", ray_within_volume=ray_within_volume)
 
     def _forward_recursive_trace(self, source: Source, detector: Detector, origin: Vector, direction: Vector, bounce: int, recursion_enum: str, ray_within_volume: dict):
         

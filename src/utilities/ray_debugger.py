@@ -1,6 +1,6 @@
 import os 
 from luminous.src.math.vector import Vector
-from luminous.src.element.element import Sphere, Element
+from luminous.src.element.shape import Sphere, Circle, Square
 import math
 import numpy as np
 import datetime
@@ -18,7 +18,11 @@ class RayDebugger(ABC):
         pass
 
     @abstractmethod
-    def add_element(self, element, color=(0,0,0)):
+    def add_element(self, element, color=(0,0,0), enum=None):
+        pass
+
+    @abstractmethod
+    def add_source(self, element, color=(0,0,0), enum=None):
         pass
 
     @abstractmethod
@@ -38,7 +42,9 @@ class NullRayDebugger(RayDebugger):
         pass
     def add_point(self, end_point, color=(0,0,0)):
         pass
-    def add_element(self, element, color=(0,0,0)):
+    def add_element(self, element, color=(0,0,0), enum=None):
+        pass
+    def add_source(self, element, color=(0,0,0), enum=None):
         pass
     def add_sphere(self, center, color=(0,0,0), radius=0.1, opacity=0.3):
         pass
@@ -171,14 +177,26 @@ class ConcreteRayDebugger(RayDebugger):
         m = inspect.currentframe().f_code.co_name
         raise TypeError(f"Unknown data structure inside call: {self.__class__.__name__}.{m}")
     
-    def add_element(self, element, color=(0,0,0)):
+    def add_source(self, element, color=(0,0,0)):
+
+        self.add_element(element, color, enum='add_source')
+    
+    def add_element(self, element, color=(0,0,0), enum='add_element'):
         
         if isinstance(element, Sphere):
             self.add_sphere(p=element.center, color=color, radius=element.radius)
             return
         
+        if isinstance(element, Circle):
+            self.add_circle(center=element.center, color=color, radius=element.radius, normal=element.pointing_direction)
+            return
+        
+        if isinstance(element, Square):
+            self.add_square(p1=element.top_left, p2=element.top_right, p3=element.bottom_left, p4=element.bottom_right, color=color)
+            return
+        
         m = inspect.currentframe().f_code.co_name
-        raise TypeError(f"Unknown element inside call: {self.__class__.__name__}.{m}")
+        raise TypeError(f"Unknown element inside call: {self.__class__.__name__}.{m} ; enum={enum}")
     
     def add_square(self, p1, p2, p3, p4, color=(0, 0, 0)):
         """

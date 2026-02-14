@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 
 from ..math.vector import Vector
-from .shape import Circle
+from .shape import Circle, Sphere
 
 class Source(ABC):
 
@@ -28,7 +28,7 @@ class Source(ABC):
             self.ray_emission_direction[detector]._merge(direction)
             self.ray_emission_origin[detector]._merge(origin)
 
-class IsotropicSource(Source, Circle):
+class IsotropicSource(Source, Sphere):
     def __init__(self, center: Vector, radius: float, color: Vector, pointing_direction: Vector):
         Source.__init__(self)
         self.center = center

@@ -34,7 +34,11 @@ class Detector(ABC):
         self.height = height
         self.pointing_direction = pointing_direction.norm()
         self.screen_width = screen_width
-        self.screen_height = screen_height
+        if screen_height is None:
+            aspect_ratio = width / height
+            self.screen_height = screen_width / aspect_ratio
+        else:
+            self.screen_height = screen_height
 
     @abstractmethod
     def _reflection_model(  self, 

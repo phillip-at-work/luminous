@@ -74,14 +74,15 @@ class Scene:
 
             for source in self.sources:
                 
+                source.compute_surface_definition()
+
                 # ray debugger
-                source.surface = source.compute_surface_definition()
-                # self.ray_debugger_reverse.add_source(source.surface, color=(0,50,150)) # TODO some issue with this
+                self.ray_debugger_reverse.add_element(source, color=(0,50,150))
 
             for detector in self.detectors:
 
                 detector.pixels = detector.create_screen_coord()
-                detector.surface = detector.compute_surface_definition()
+                detector.compute_surface_definition()
                 pixel_rays = detector._compute_initial_ray_directions(detector.pixels)
 
                 # ray debugger
@@ -100,11 +101,11 @@ class Scene:
             for source in self.sources:
 
                 source.pixels = source.create_screen_coord()
-                source.surface = source.compute_surface_definition()
+                source.compute_surface_definition()
                 pixel_rays = source._compute_initial_ray_directions(source.pixels)
 
                 # ray debugger
-                self.ray_debugger_reverse.add_source(source.surface, color=(0,50,150))
+                self.ray_debugger_reverse.add_point(source.pixels, color=(255,0,0))
             
                 for detector in self.detectors:
 
@@ -113,6 +114,7 @@ class Scene:
                     self.ray_debugger_reverse.add_point(source.position, color=(0, 255, 100))
                     self.ray_debugger_reverse.add_vector(start_point=source.position, end_point=source_pointing_dir, color=(255, 100, 0))
                     self.ray_debugger_reverse.add_point(source.pixels, color=(255,100,0))
+                    self.ray_debugger_reverse.add_element(detector, color=(0,50,150))
 
                     logger.debug(f"FORWARD TRACE")
                     ray_within_volume = {e: False for e in self.elements}

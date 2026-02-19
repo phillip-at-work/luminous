@@ -29,9 +29,7 @@ class Source(ABC):
             self.ray_emission_origin[detector]._merge(origin)
 
 class IsotropicSource(Source, Sphere):
-    def __init__(self, center: Vector, radius: float, color: Vector, pointing_direction: Vector):
-        Source.__init__(self)
-        self.center = center
-        self.radius = radius
+    def __init__(self, center: Vector, radius: float, color: Vector):
+        Sphere.__init__(self, center, radius)
         self.color = color
         self.pointing_direction = None # semantics for isotropic sources. no specific pointing direction.    

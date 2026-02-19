@@ -35,7 +35,7 @@ class Shape(ABC):
     @abstractmethod
     def compute_surface_definition(self):
         '''
-        Computes geometry to describe a SceneObject's extension in space (2D or 3D).
+        Computes geometry or basis vectors to describe a Shapes's extension in space (2D or 3D).
         The surface definition of a Shape should be independent of the pixel definition.
         As these methods might not be called together.
         '''
@@ -96,19 +96,19 @@ class Square(Shape):
         else:
             v_ref = Vector(1, 0, 0)
         
-        # right vector
-        u = n.cross(v_ref)
+        # right basis vector
+        self.u = n.cross(v_ref)
         
-        # up vector
-        v = u.cross(n) 
+        # up basis vector
+        self.v = self.u.cross(n) 
 
         half_w = self.screen_width / 2.0
         half_h = self.screen_height / 2.0
 
-        self.top_left = self.position - (u * half_w) + (v * half_h)
-        self.top_right = self.position + (u * half_w) + (v * half_h)
-        self.bottom_left = self.position - (u * half_w) - (v * half_h)
-        self.bottom_right = self.position + (u * half_w) - (v * half_h)
+        self.top_left = self.position - (self.u * half_w) + (self.v * half_h)
+        self.top_right = self.position + (self.u * half_w) + (self.v * half_h)
+        self.bottom_left = self.position - (self.u * half_w) - (self.v * half_h)
+        self.bottom_right = self.position + (self.u * half_w) - (self.v * half_h)
         
     def create_screen_coord(
         self,
@@ -158,33 +158,31 @@ class Square(Shape):
         return screen_coords
 
     def intersect(self, ray_origin_point: Vector, ray_direction_from_origin: Vector):
+
+        if not self.u or not self.v:
+            raise ValueError(f"Basis vectors not yet defined. Did you call {super.__class__}.compute_surface_definition()?")
+
         denom = super.pointing_direction.dot(ray_direction_from_origin)
         if denom > 0:
-            # ray parallel to plane
+            # if <=0, ray is hitting the back of the surface
             return FARAWAY
 
-        t = super.pointing_direction.dot(self.top_left - ray_origin_point) / denom
-        if t < 0:
-            # intersection is behind the ray origin
-            return FARAWAY
+        t = super.pointing_direction.dot(self.position - ray_origin_point) / denom
 
-        P = ray_origin_point + ray_direction_from_origin * t
+        # boundry check
+        P = ray_origin_point + t * ray_direction_from_origin
+        v_hit = P - self.position
 
-        corners = [self.top_left, self.top_right, self.bottom_right, self.bottom_left]
-        inside = True
-        for i in range(4):
-            a = corners[i]
-            b = corners[(i + 1) % 4]
-            edge = b - a
-            vp = P - a
-            if super.pointing_direction.dot(edge.cross(vp)) < 0:
-                inside = False
-                break
+        u_coord = v_hit.dot(self.u)
+        v_coord = v_hit.dot(self.v)
 
-        if inside:
-            return P
-        else:
-            return FARAWAY
+        half_w = self.screen_width / 2
+        half_h = self.screen_height / 2
+
+        if abs(u_coord) <= half_w and abs(v_coord) <= half_h:
+            return t
+            
+        return FARAWAY
 
     def compute_outward_normal(self, intersection_point: Vector) -> Vector:
         return super.pointing_direction

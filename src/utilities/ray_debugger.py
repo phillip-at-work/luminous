@@ -18,11 +18,7 @@ class RayDebugger(ABC):
         pass
 
     @abstractmethod
-    def add_element(self, element, color=(0,0,0), enum=None):
-        pass
-
-    @abstractmethod
-    def add_source(self, element, color=(0,0,0), enum=None):
+    def add_element(self, element, color=(0,0,0)):
         pass
 
     @abstractmethod
@@ -42,9 +38,7 @@ class NullRayDebugger(RayDebugger):
         pass
     def add_point(self, end_point, color=(0,0,0)):
         pass
-    def add_element(self, element, color=(0,0,0), enum=None):
-        pass
-    def add_source(self, element, color=(0,0,0), enum=None):
+    def add_element(self, element, color=(0,0,0)):
         pass
     def add_sphere(self, center, color=(0,0,0), radius=0.1, opacity=0.3):
         pass
@@ -177,10 +171,6 @@ class ConcreteRayDebugger(RayDebugger):
         m = inspect.currentframe().f_code.co_name
         raise TypeError(f"Unknown data structure inside call: {self.__class__.__name__}.{m}")
     
-    def add_source(self, element, color=(0,0,0)):
-
-        self.add_element(element, color, enum='add_source')
-    
     def add_element(self, element, color=(0,0,0), enum='add_element'):
         
         if isinstance(element, Sphere):
@@ -196,7 +186,7 @@ class ConcreteRayDebugger(RayDebugger):
             return
         
         m = inspect.currentframe().f_code.co_name
-        raise TypeError(f"Unknown element inside call: {self.__class__.__name__}.{m} ; enum={enum}")
+        raise TypeError(f"Unknown element inside call: {self.__class__.__name__}.{m}")
     
     def add_square(self, p1, p2, p3, p4, color=(0, 0, 0)):
         """

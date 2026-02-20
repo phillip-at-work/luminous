@@ -73,8 +73,6 @@ class Scene:
         if self.reverse_trace:
 
             for source in self.sources:
-                
-                source.compute_surface_definition()
 
                 # ray debugger
                 self.ray_debugger_reverse.add_element(source, color=(0,50,150))

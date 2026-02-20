@@ -41,17 +41,8 @@ class SphereElement(Element, Sphere):
         super().__init__(center, color, transparent, refractive_index, user_params)
         self.radius = radius
 
-    def intersect(self, origin: Vector, direction: Vector):
-        return super().intersect(origin, direction)
-
     def surface_color(self, M: Vector) -> Vector:
         return self.color
-
-    def compute_outward_normal(self, intersection_point: Vector) -> Vector:
-        return super().compute_outward_normal(intersection_point)
-    
-    def compute_inward_normal(self, intersection_point: Vector) -> Vector:
-        return super().compute_inward_normal(intersection_point)
 
 class CheckeredSphereElement(SphereElement):
     def __init__(self, center: Vector, radius: float, color: Vector, transparent: bool = False, refractive_index: float = 1.0, checker_color: Vector = Vector(1, 1, 1), user_params=None):

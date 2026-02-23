@@ -6,8 +6,7 @@ from PIL import Image
 
 from ..math.vector import Vector
 from .source import Source
-from .shape import Shape
-from .shape import Square
+from .shape import Shape, Square, Circle
 
 import logging
 from luminous.src.utilities.logconfig import setup_logging
@@ -108,6 +107,29 @@ class Detector(ABC):
         '''
         pass
 
+class PowerMeter(Detector, Circle):
+    '''
+    Ideal power meter for measurements in watts
+    '''
+    def __init__(self, width: int, height: int, position: Vector, pointing_direction: Vector, screen_width: float, screen_height: float):
+        super().__init__(width, height, position, pointing_direction, screen_width, screen_height)
+
+    def _reflection_model(self, element, intersection_point, surface_normal_at_intersection, direction_to_origin_unit, intersection_map):
+        pass
+    
+    def _transmission_model(self, element, initial_intersection, final_intersection):
+        raise NotImplementedError("Not currently implemented")
+    
+    def _emission_model(self, detection_area_normal: Vector, intersection_map):
+        pass
+
+    def view_data(self, forward_trace_data=False):
+        # TODO iterate through detected rays, integrate, return final value in watts
+        pass
+    
+    def _compute_initial_ray_directions(self, detector_screen: Vector):
+        raise NotImplementedError("Power meter designed for use with forward path traces.")
+
 class Camera(Detector, Square):
     '''
     Simple simulated camera using Blinn-Phong shading for pixels.
@@ -188,6 +210,10 @@ class Camera(Detector, Square):
         return Image.merge("RGB", rgb)
     
     def _compute_initial_ray_directions(self, detector_screen: Vector):
+
+        # TODO placeholder implementation. in the future, rays should propogate
+        # through a pinhole, or through the extent of a pupil in a lens assembly
+        # as marginal rays
 
         initial_ray_dir = (detector_screen - self.position)
 

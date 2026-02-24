@@ -39,20 +39,23 @@ class Detector(ABC):
         else:
             self.screen_height = screen_height
 
+        self.ray_emission_direction = list()
+        self.ray_emission_origin = list()
+        self.ray_spectrum = list()
+
     @abstractmethod
     def _reflection_model(  self, 
                             element: Shape,
                             intersection_point: Vector,
                             surface_normal_at_intersection: Vector, 
                             direction_to_origin_unit: Vector, 
-                            intersection_map: list[dict]) -> Vector:
+                            intersection_map: list[dict],
+                            intersection_mask: NDArray[np.bool_]) -> Vector | None:
         '''
         Tint or otherwise weight pixel data model at reflection event.
 
         Support for multiple sources MUST be implemented here!
         e.g., shaded pixel values are the sum or weighted sum of the contributions of sources which illuminate that pixel
-
-        For a succinct description of reflection models, see 'Learning OpenGL - Graphics Programming' Chapter 6, 2020, de Vries
 
         Parameters:
             element (Element): The element where the intersection occurs. Use this handle to access element-specific parameters needed for reflection model. Note that additional element parameters can be passed as key:value pairs using Element arg `user_params`.
@@ -69,7 +72,7 @@ class Detector(ABC):
                             element: Shape,
                             initial_intersection: Vector,
                             final_intersection: Vector,
-                            transmission_weights: NDArray[np.number]):
+                            intersection_mask: NDArray[np.bool_]) -> Vector | None:
         '''
         Tint or otherwise weight pixel data model at transmission event.
 
@@ -79,13 +82,11 @@ class Detector(ABC):
 
     @abstractmethod
     def _emission_model(    self, 
-                            source: Source,
-                            intersection_point: Vector,
-                            surface_normal_at_intersection: Vector, 
-                            direction_to_origin_unit: Vector, 
-                            intersection_map: list[dict]) -> Vector:
+                            detection_area_normal: Vector, 
+                            intersection_map: list[dict]) -> Vector | None:
         '''
         Tint or otherwise weight pixel data model when ray's origin position is in direct view of the source.
+        This method need not be implemented for detectors used only for forward traces.
 
         # TODO document parameters
         '''
@@ -114,21 +115,22 @@ class PowerMeter(Detector, Circle):
     def __init__(self, width: int, height: int, position: Vector, pointing_direction: Vector, screen_width: float, screen_height: float):
         super().__init__(width, height, position, pointing_direction, screen_width, screen_height)
 
-    def _reflection_model(self, element, intersection_point, surface_normal_at_intersection, direction_to_origin_unit, intersection_map):
+    def _reflection_model(self, element, intersection_point, surface_normal_at_intersection, direction_to_origin_unit, intersection_map, intersection_mask):
+        # TODO apply reflection model directly to self.pixels
         pass
     
-    def _transmission_model(self, element, initial_intersection, final_intersection):
-        raise NotImplementedError("Not currently implemented")
+    def _transmission_model(self, element, initial_intersection, final_intersection, intersection_mask):
+        raise NotImplementedError("Not yet implemented")
     
-    def _emission_model(self, detection_area_normal: Vector, intersection_map):
-        pass
+    def _emission_model(self, detection_area_normal, intersection_map):
+        raise NotImplementedError("Not to be implemented. Power meter designed for use with forward path traces, which are source-driven.")
 
     def view_data(self, forward_trace_data=False):
         # TODO iterate through detected rays, integrate, return final value in watts
         pass
     
     def _compute_initial_ray_directions(self, detector_screen: Vector):
-        raise NotImplementedError("Power meter designed for use with forward path traces.")
+        raise NotImplementedError("Not to be implemented. Power meter designed for use with forward path traces. which are source-driven.")
 
 class Camera(Detector, Square):
     '''
@@ -143,7 +145,7 @@ class Camera(Detector, Square):
         # unilluminated pixels display this noise floor
         self.ambient_dark = Vector(0, 0, 0)
 
-    def _reflection_model(self, element, intersection_point, surface_normal_at_intersection, direction_to_origin_unit, intersection_map):
+    def _reflection_model(self, element, intersection_point, surface_normal_at_intersection, direction_to_origin_unit, intersection_map, intersection_mask):
 
         s = Vector(0,0,0)
 
@@ -166,7 +168,7 @@ class Camera(Detector, Square):
 
         return self.ambient_dark + s
     
-    def _transmission_model(self, element, initial_intersection, final_intersection):
+    def _transmission_model(self, element, initial_intersection, final_intersection, intersection_mask):
 
         # TODO this current implementation isn't great
         # next version should do two things: diminish the intensity of the ray passing through the medium and tint that ray based upon element color

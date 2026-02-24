@@ -18,6 +18,7 @@ class Source(ABC):
     def _enqueue_rays(self, origin: Vector, direction: Vector, detector):
         '''
         Enqueue rays from a reverse ray trace, which can be replayed in the forward direction.
+        When replaying rays, use initial recursion call: _recursive_path_trace(... origin=source.ray_emission_origin[detector], ...)
         '''
         
         if self.ray_emission_direction.get(detector) is None:

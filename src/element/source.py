@@ -15,6 +15,13 @@ class Source(ABC):
         self.ray_emission_direction = dict()
         self.ray_emission_origin = dict()
 
+    @abstractmethod
+    def _compute_initial_ray_directions(self):
+        '''
+        Compute initial ray trajectories FROM a source. Used in forward traces only.
+        '''
+        pass
+
     def _enqueue_rays(self, origin: Vector, direction: Vector, detector):
         '''
         Enqueue rays from a reverse ray trace, which can be replayed in the forward direction.
@@ -32,5 +39,28 @@ class Source(ABC):
 class IsotropicSource(Source, Sphere):
     def __init__(self, center: Vector, radius: float, color: Vector):
         Sphere.__init__(self, center, radius)
+        Source.__init__(self)
         self.color = color
-        self.pointing_direction = None # semantics for isotropic sources. no specific pointing direction.    
+
+    def _compute_initial_ray_directions(self, pixels: Vector):
+        pass
+
+class Laser(Source, Circle):
+    def __init__(self, center: Vector, radius: float, pointing_direction: Vector, color: Vector, pixel_count: int):
+        Circle.__init__(self, center, radius, pointing_direction, pixel_count)
+        Source.__init__(self)
+        self.color = color
+
+    def _compute_initial_ray_directions(self, pixels: Vector):
+
+        # TODO future implementations will allow for some extent of bream divergence
+
+        initial_ray_dir = (pixels - self.center)
+
+        ray_dir_x = initial_ray_dir.x
+        ray_dir_y = initial_ray_dir.y
+        ray_dir_z = initial_ray_dir.z + self.pointing_direction.z
+
+        ray_dir = Vector(ray_dir_x, ray_dir_y, ray_dir_z)
+
+        return ray_dir

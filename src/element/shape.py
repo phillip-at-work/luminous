@@ -50,6 +50,8 @@ class Shape(ABC):
         The screen's physical size is specified by `screen_width` (and optionally `screen_height`); pixel centers are uniformly distributed across this surface.
 
         """
+        pass
+
     @classmethod
     def _rotation_matrix(self, axis, theta):
         """
@@ -77,7 +79,23 @@ class Shape(ABC):
 
 class Square(Shape):
 
-    def __init__(self):
+    def __init__(self, width: int, height: int, position: Vector, pointing_direction: Vector, screen_width=2.0, screen_height=None):
+
+        self.position = position
+        self.width = width
+        self.height = height
+        self.pointing_direction = pointing_direction.norm()
+        self.screen_width = screen_width
+        if screen_height is None:
+            aspect_ratio = width / height
+            self.screen_height = screen_width / aspect_ratio
+        else:
+            self.screen_height = screen_height
+
+        self.ray_emission_direction = list()
+        self.ray_emission_origin = list()
+        self.ray_spectrum = list()
+    
         self.top_left = None
         self.top_right = None
         self.bottom_left = None
@@ -127,33 +145,25 @@ class Square(Shape):
         Vector: A Vector object containing the 3D coordinates for each pixel on the screen
         '''
 
-        # superclass attributes
-        w: int = self.width
-        h: int = self.height
-        detector_pointing_direction: Vector = self.pointing_direction
-        detector_pos: Vector = self.position
-        screen_width: float = self.screen_width
-        screen_height: float = self.screen_height
-
         screen = (
-            -screen_width / 2 + horizontal_screen_shift,
-            screen_height / 2 + vertical_screen_shift,
-            screen_width / 2 + horizontal_screen_shift,
-            -screen_height / 2 + vertical_screen_shift
+            -self.screen_width / 2 + horizontal_screen_shift,
+            self.screen_height / 2 + vertical_screen_shift,
+            self.screen_width / 2 + horizontal_screen_shift,
+            -self.screen_height / 2 + vertical_screen_shift
         )
-        w_row = np.linspace(screen[0], screen[2], w)
-        h_col = np.linspace(screen[1], screen[3], h)
-        rows = np.tile(w_row, h)
-        columns = np.repeat(h_col, w)
+        w_row = np.linspace(screen[0], screen[2], self.width)
+        h_col = np.linspace(screen[1], screen[3], self.height)
+        rows = np.tile(w_row, self.height)
+        columns = np.repeat(h_col, self.width)
         d = np.zeros(len(rows))
 
         screen_coords = Vector(rows, columns, d)
 
         if rotation != 0:
-            rotation_matrix = self._rotation_matrix(detector_pointing_direction, rotation)
+            rotation_matrix = self._rotation_matrix(self.pointing_direction, rotation)
             screen_coords = self._apply_rotation(screen_coords, rotation_matrix)
 
-        screen_coords = screen_coords + detector_pos
+        screen_coords = screen_coords + self.position
 
         return screen_coords
 
@@ -192,9 +202,11 @@ class Square(Shape):
     
 
 class Circle(Shape):
-    def __init__(self, center: Vector, radius: float):
+    def __init__(self, center: Vector, radius: float, pointing_direction: Vector, pixel_count: int):
+        self.pixel_count = pixel_count
         self.radius = radius
         self.center = center
+        self.pointing_direction = pointing_direction.norm()
 
     def compute_surface_definition(self):
         # self.center, self.pointing_direction, and self.radius are sufficient to define the shape's plane
@@ -236,7 +248,7 @@ class Circle(Shape):
 
         # map 2D plane coordinates to 3D space
         # point = center + (local_x * u_axis) + (local_y * v_axis)
-        screen_coords = self.position + (u * local_x) + (v * local_y)
+        screen_coords = self.center + (u * local_x) + (v * local_y)
 
         return screen_coords
 
@@ -258,7 +270,7 @@ class Circle(Shape):
             return FARAWAY
 
     def compute_outward_normal(self, intersection_point: Vector) -> Vector:
-        return super.pointing_direction
+        return self.pointing_direction
     
     def compute_inward_normal(self, intersection_point: Vector) -> Vector:
         raise NotImplementedError()
@@ -266,6 +278,7 @@ class Circle(Shape):
 
 class Sphere(Shape):
     def __init__(self, center: Vector, radius: float):
+        self.pointing_direction = None
         self.radius = radius
         self.center = center
 

@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class Detector(ABC):
-    def __init__(self, width: int, height: int, position: Vector, pointing_direction: Vector, screen_width=2.0, screen_height=None):
+    def __init__(self):
         '''
         Parameters:
             _data (Vector): Detector's accumulated data, called directly from within `Scene`
@@ -25,23 +25,11 @@ class Detector(ABC):
             screen_width (float, optional): The physical width (X-direction) of the detector screen in scene units. Default is 2.0.
             screen_height (float, optional): The physical height (Y-direction) of the detector screen. If None, calculated from screen_width and detector aspect ratio.
         '''
+
+        # instance attributes directly assigned from Scene
         self._reverse_trace_data = None
         self._forward_trace_data = None
         self.pixels = None
-        self.position = position
-        self.width = width
-        self.height = height
-        self.pointing_direction = pointing_direction.norm()
-        self.screen_width = screen_width
-        if screen_height is None:
-            aspect_ratio = width / height
-            self.screen_height = screen_width / aspect_ratio
-        else:
-            self.screen_height = screen_height
-
-        self.ray_emission_direction = list()
-        self.ray_emission_origin = list()
-        self.ray_spectrum = list()
 
     @abstractmethod
     def _reflection_model(  self, 
@@ -112,8 +100,9 @@ class PowerMeter(Detector, Circle):
     '''
     Ideal power meter for measurements in watts
     '''
-    def __init__(self, width: int, height: int, position: Vector, pointing_direction: Vector, screen_width: float, screen_height: float):
-        super().__init__(width, height, position, pointing_direction, screen_width, screen_height)
+    def __init__(self, center: Vector, radius: float, pointing_direction: Vector, pixel_count: int = None):
+        Circle.__init__(self, center, radius, pointing_direction, pixel_count)
+        Detector.__init__(self)
 
     def _reflection_model(self, element, intersection_point, surface_normal_at_intersection, direction_to_origin_unit, intersection_map, intersection_mask):
         # TODO apply reflection model directly to self.pixels
@@ -128,9 +117,9 @@ class PowerMeter(Detector, Circle):
     def view_data(self, forward_trace_data=False):
         # TODO iterate through detected rays, integrate, return final value in watts
         pass
-    
-    def _compute_initial_ray_directions(self, detector_screen: Vector):
-        raise NotImplementedError("Not to be implemented. Power meter designed for use with forward path traces. which are source-driven.")
+
+    def _compute_initial_ray_directions(self, pixels: Vector):
+        raise NotImplementedError("Not yet implemented")
 
 class Camera(Detector, Square):
     '''
@@ -140,7 +129,8 @@ class Camera(Detector, Square):
             where s is a float and n is a float
     '''
     def __init__(self, width: int, height: int, position: Vector, pointing_direction: Vector, screen_width: float, screen_height: float):
-        super().__init__(width, height, position, pointing_direction, screen_width, screen_height)
+        Square.__init__(self, width, height, position, pointing_direction, screen_width, screen_height)
+        Detector.__init__(self)
 
         # unilluminated pixels display this noise floor
         self.ambient_dark = Vector(0, 0, 0)
@@ -211,13 +201,13 @@ class Camera(Detector, Square):
 
         return Image.merge("RGB", rgb)
     
-    def _compute_initial_ray_directions(self, detector_screen: Vector):
+    def _compute_initial_ray_directions(self, pixels: Vector):
 
         # TODO placeholder implementation. in the future, rays should propogate
         # through a pinhole, or through the extent of a pupil in a lens assembly
         # as marginal rays
 
-        initial_ray_dir = (detector_screen - self.position)
+        initial_ray_dir = (pixels - self.position)
 
         ray_dir_x = initial_ray_dir.x
         ray_dir_y = initial_ray_dir.y

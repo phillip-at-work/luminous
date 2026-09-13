@@ -9,7 +9,7 @@ from .source import Source
 from .shape import Shape, Square, Circle
 
 import logging
-from luminous.src.utilities.logconfig import setup_logging
+from ..utilities.logconfig import setup_logging
 logger = logging.getLogger(__name__)
 
 
@@ -139,6 +139,10 @@ class Camera(Detector, Square):
 
         s = Vector(0,0,0)
 
+        # Handle empty intersection_map case
+        if len(intersection_map) == 0:
+            return self.ambient_dark
+
         for v in intersection_map:
 
             direction_to_source_unit = v['direction_to_source_unit']
@@ -164,9 +168,11 @@ class Camera(Detector, Square):
         # next version should do two things: diminish the intensity of the ray passing through the medium and tint that ray based upon element color
 
         internal_travel_distance: Vector = (final_intersection - initial_intersection).magnitude() 
-        beers_law_attenuation = element.surface_color(initial_intersection) * np.exp(-internal_travel_distance)
+        entry_color = element.surface_color(initial_intersection)
+        exit_color = element.surface_color(final_intersection)
+        beers_law_attenuation = mixed_color = (entry_color + exit_color) * 0.5 # * np.exp(-internal_travel_distance)
         return beers_law_attenuation
-    
+        
     def _emission_model(self, detection_area_normal: Vector, intersection_map):
 
         s = Vector(0,0,0)

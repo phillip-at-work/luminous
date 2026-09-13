@@ -1,0 +1,60 @@
+{
+    // VSCode launch configuration for debugging luminous tests
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Current Test File",
+            "type": "python",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "${file}",
+                "-v",
+                "-s",
+                "--no-cov"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}/luminous",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/luminous"
+            }
+        },
+        {
+            "name": "Debug Specific Test",
+            "type": "python",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/test_reverse_trace.py::TestBasicIllumination::test_direct_illumination_no_obstacles",
+                "-v",
+                "-s",
+                "--no-cov"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}/luminous",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/luminous"
+            }
+        },
+        {
+            "name": "Debug All Tests",
+            "type": "python",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/",
+                "-v",
+                "-s",
+                "--no-cov"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}/luminous",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/luminous"
+            }
+        }
+    ]
+}

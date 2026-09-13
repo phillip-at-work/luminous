@@ -2,6 +2,26 @@
 
 An object-oriented ray trace library with a scriptable API. See repo `https://github.com/phillip-at-work/luminous-examples` to explore the most up-to-date features.
 
+## Running Tests
+
+```bash
+# Normal mode: simple list of tests with pass/fail
+./run_tests.sh
+
+# Debug mode: shows print statements even when tests pass
+./run_tests.sh --debug
+
+# Coverage report
+./run_tests.sh --coverage
+```
+
+## Reverse Raytrace
+
+- Intended largely as a debug feature to confirm that scene elements are place appropriately
+- Does not factor in Fresnel losses. Instead, the reverse trace uses an arbitrary counter to limit the number of rays the reflect and transmit. This can sometimes produce misleading results, as those rays will necessarily progagate some constant count, rather than diminishing in intensity from the source.
+- Cannot image sources. e.g., sources in the detector's view are invisible
+- Does support simultaneous reflection and transmission for transparent volumes
+
 # TODO roadmap (priority where numbered)
 0) DONE. add optional raydebugger as null pattern to map rays with vtk
 1) DONE. add raydebugger rays from detector to elements, elements to source

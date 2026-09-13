@@ -1,6 +1,6 @@
 import os 
-from luminous.src.math.vector import Vector
-from luminous.src.element.shape import Sphere, Circle, Square
+from ..math.vector import Vector
+from ..element.shape import Sphere, Circle, Square
 import math
 import numpy as np
 import datetime

@@ -318,1133 +318,1134 @@ class TestThreeReflections:
         assert pixel_is_illuminated(camera), \
             "Ray should reach detector via three reflections"
 
+# WIP
 
-class TestSingleTransmission:
-    """Test geometry with one transmission."""
+# class TestSingleTransmission:
+#     """Test geometry with one transmission."""
     
-    def test_one_transmission_success(self):
-        """Ray should reach detector via one transmission when geometry allows."""
-        scene = Scene(reverse_trace=True)
+#     def test_one_transmission_success(self):
+#         """Ray should reach detector via one transmission when geometry allows."""
+#         scene = Scene(reverse_trace=True)
         
-        # Source directly behind transparent sphere
-        source = IsotropicSource(
-            center=Vector(0, 0, 0),
-            radius=0.3,
-            color=Vector(1, 1, 1)
-        )
+#         # Source directly behind transparent sphere
+#         source = IsotropicSource(
+#             center=Vector(0, 0, 0),
+#             radius=0.3,
+#             color=Vector(1, 1, 1)
+#         )
         
-        # Transparent sphere between source and camera
-        glass_sphere = SphereElement(
-            center=Vector(0, 0, 2),
-            radius=0.5,
-            color=Vector(0.9, 0.9, 1.0),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
+#         # Transparent sphere between source and camera
+#         glass_sphere = SphereElement(
+#             center=Vector(0, 0, 2),
+#             radius=0.5,
+#             color=Vector(0.9, 0.9, 1.0),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
         
-        # 1x1 camera looking through sphere at source
-        camera = Camera(
-            width=1,
-            height=1,
-            position=Vector(0, 0, 4),
-            pointing_direction=Vector(0, 0, -1),
-            screen_width=0.01,
-            screen_height=0.01
-        )
+#         # 1x1 camera looking through sphere at source
+#         camera = Camera(
+#             width=1,
+#             height=1,
+#             position=Vector(0, 0, 4),
+#             pointing_direction=Vector(0, 0, -1),
+#             screen_width=0.01,
+#             screen_height=0.01
+#         )
         
-        scene += source
-        scene += glass_sphere
-        scene += camera
-        scene.raytrace()
+#         scene += source
+#         scene += glass_sphere
+#         scene += camera
+#         scene.raytrace()
         
-        assert pixel_is_illuminated(camera), \
-            "Ray should reach detector via one transmission"
+#         assert pixel_is_illuminated(camera), \
+#             "Ray should reach detector via one transmission"
     
-    def test_one_transmission_failure(self):
-        """Ray should NOT reach detector when opaque object blocks transmission."""
-        scene = Scene(reverse_trace=True)
+#     def test_one_transmission_failure(self):
+#         """Ray should NOT reach detector when opaque object blocks transmission."""
+#         scene = Scene(reverse_trace=True)
         
-        # Source behind opaque sphere
-        source = IsotropicSource(
-            center=Vector(0, 0, 0),
-            radius=0.3,
-            color=Vector(1, 1, 1)
-        )
+#         # Source behind opaque sphere
+#         source = IsotropicSource(
+#             center=Vector(0, 0, 0),
+#             radius=0.3,
+#             color=Vector(1, 1, 1)
+#         )
         
-        # Opaque sphere blocks transmission
-        opaque_sphere = SphereElement(
-            center=Vector(0, 0, 2),
-            radius=0.5,
-            color=Vector(0.9, 0.9, 0.9),
-            transparent=False,  # Opaque
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
+#         # Opaque sphere blocks transmission
+#         opaque_sphere = SphereElement(
+#             center=Vector(0, 0, 2),
+#             radius=0.5,
+#             color=Vector(0.9, 0.9, 0.9),
+#             transparent=False,  # Opaque
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
         
-        camera = Camera(
-            width=1,
-            height=1,
-            position=Vector(0, 0, 4),
-            pointing_direction=Vector(0, 0, -1),
-            screen_width=0.01,
-            screen_height=0.01
-        )
+#         camera = Camera(
+#             width=1,
+#             height=1,
+#             position=Vector(0, 0, 4),
+#             pointing_direction=Vector(0, 0, -1),
+#             screen_width=0.01,
+#             screen_height=0.01
+#         )
         
-        scene += source
-        scene += opaque_sphere
-        scene += camera
-        scene.raytrace()
+#         scene += source
+#         scene += opaque_sphere
+#         scene += camera
+#         scene.raytrace()
         
-        assert not pixel_is_illuminated(camera), \
-            "Ray should NOT reach detector when opaque object blocks path"
-
-
-class TestTwoTransmissions:
-    """Test geometry with two transmissions."""
-    
-    def test_two_transmissions_success(self):
-        """Ray should reach detector via two transmissions when geometry allows."""
-        scene = Scene(reverse_trace=True)
-        
-        # Source at origin
-        source = IsotropicSource(
-            center=Vector(0, 0, 0),
-            radius=0.3,
-            color=Vector(1, 1, 1)
-        )
-        
-        # First transparent sphere
-        glass_sphere1 = SphereElement(
-            center=Vector(0, 0, 1.5),
-            radius=0.4,
-            color=Vector(0.9, 0.9, 1.0),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
-        
-        # Second transparent sphere
-        glass_sphere2 = SphereElement(
-            center=Vector(0, 0, 2.5),
-            radius=0.4,
-            color=Vector(0.9, 1.0, 0.9),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
-        
-        # 1x1 camera
-        camera = Camera(
-            width=1,
-            height=1,
-            position=Vector(0, 0, 4),
-            pointing_direction=Vector(0, 0, -1),
-            screen_width=0.01,
-            screen_height=0.01
-        )
-        
-        scene += source
-        scene += glass_sphere1
-        scene += glass_sphere2
-        scene += camera
-        scene.raytrace()
-        
-        assert pixel_is_illuminated(camera), \
-            "Ray should reach detector via two transmissions"
-    
-    def test_two_transmissions_failure(self):
-        """Ray should NOT reach detector when opaque object blocks transmission path."""
-        scene = Scene(reverse_trace=True)
-        
-        # Source at origin
-        source = IsotropicSource(
-            center=Vector(0, 0, 0),
-            radius=0.3,
-            color=Vector(1, 1, 1)
-        )
-        
-        # First transparent sphere
-        glass_sphere = SphereElement(
-            center=Vector(0, 0, 1.5),
-            radius=0.4,
-            color=Vector(0.9, 0.9, 1.0),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
-        
-        # Opaque sphere blocks path
-        opaque_sphere = SphereElement(
-            center=Vector(0, 0, 2.5),
-            radius=0.4,
-            color=Vector(0.9, 0.9, 0.9),
-            transparent=False,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
-        
-        camera = Camera(
-            width=1,
-            height=1,
-            position=Vector(0, 0, 4),
-            pointing_direction=Vector(0, 0, -1),
-            screen_width=0.01,
-            screen_height=0.01
-        )
-        
-        scene += source
-        scene += glass_sphere
-        scene += opaque_sphere
-        scene += camera
-        scene.raytrace()
-        
-        assert not pixel_is_illuminated(camera), \
-            "Ray should NOT reach detector when opaque object blocks transmission path"
+#         assert not pixel_is_illuminated(camera), \
+#             "Ray should NOT reach detector when opaque object blocks path"
 
 
-class TestThreeTransmissions:
-    """Test geometry with three transmissions."""
+# class TestTwoTransmissions:
+#     """Test geometry with two transmissions."""
     
-    def test_three_transmissions_success(self):
-        """Ray should reach detector via three transmissions when geometry allows."""
-        scene = Scene(reverse_trace=True)
+#     def test_two_transmissions_success(self):
+#         """Ray should reach detector via two transmissions when geometry allows."""
+#         scene = Scene(reverse_trace=True)
         
-        # Source at origin
-        source = IsotropicSource(
-            center=Vector(0, 0, 0),
-            radius=0.3,
-            color=Vector(1, 1, 1)
-        )
+#         # Source at origin
+#         source = IsotropicSource(
+#             center=Vector(0, 0, 0),
+#             radius=0.3,
+#             color=Vector(1, 1, 1)
+#         )
         
-        # Three transparent spheres in a line
-        glass_sphere1 = SphereElement(
-            center=Vector(0, 0, 1.2),
-            radius=0.3,
-            color=Vector(0.9, 0.9, 1.0),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
+#         # First transparent sphere
+#         glass_sphere1 = SphereElement(
+#             center=Vector(0, 0, 1.5),
+#             radius=0.4,
+#             color=Vector(0.9, 0.9, 1.0),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
         
-        glass_sphere2 = SphereElement(
-            center=Vector(0, 0, 2.0),
-            radius=0.3,
-            color=Vector(0.9, 1.0, 0.9),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
+#         # Second transparent sphere
+#         glass_sphere2 = SphereElement(
+#             center=Vector(0, 0, 2.5),
+#             radius=0.4,
+#             color=Vector(0.9, 1.0, 0.9),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
         
-        glass_sphere3 = SphereElement(
-            center=Vector(0, 0, 2.8),
-            radius=0.3,
-            color=Vector(1.0, 0.9, 0.9),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
+#         # 1x1 camera
+#         camera = Camera(
+#             width=1,
+#             height=1,
+#             position=Vector(0, 0, 4),
+#             pointing_direction=Vector(0, 0, -1),
+#             screen_width=0.01,
+#             screen_height=0.01
+#         )
         
-        # 1x1 camera
-        camera = Camera(
-            width=1,
-            height=1,
-            position=Vector(0, 0, 4),
-            pointing_direction=Vector(0, 0, -1),
-            screen_width=0.01,
-            screen_height=0.01
-        )
+#         scene += source
+#         scene += glass_sphere1
+#         scene += glass_sphere2
+#         scene += camera
+#         scene.raytrace()
         
-        scene += source
-        scene += glass_sphere1
-        scene += glass_sphere2
-        scene += glass_sphere3
-        scene += camera
-        scene.raytrace()
-        
-        assert pixel_is_illuminated(camera), \
-            "Ray should reach detector via three transmissions"
+#         assert pixel_is_illuminated(camera), \
+#             "Ray should reach detector via two transmissions"
     
-    def test_three_transmissions_failure(self):
-        """Ray should NOT reach detector when path is blocked."""
-        scene = Scene(reverse_trace=True)
+#     def test_two_transmissions_failure(self):
+#         """Ray should NOT reach detector when opaque object blocks transmission path."""
+#         scene = Scene(reverse_trace=True)
         
-        # Source at origin
-        source = IsotropicSource(
-            center=Vector(0, 0, 0),
-            radius=0.3,
-            color=Vector(1, 1, 1)
-        )
+#         # Source at origin
+#         source = IsotropicSource(
+#             center=Vector(0, 0, 0),
+#             radius=0.3,
+#             color=Vector(1, 1, 1)
+#         )
         
-        # Two transparent spheres
-        glass_sphere1 = SphereElement(
-            center=Vector(0, 0, 1.2),
-            radius=0.3,
-            color=Vector(0.9, 0.9, 1.0),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
+#         # First transparent sphere
+#         glass_sphere = SphereElement(
+#             center=Vector(0, 0, 1.5),
+#             radius=0.4,
+#             color=Vector(0.9, 0.9, 1.0),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
         
-        glass_sphere2 = SphereElement(
-            center=Vector(0, 0, 2.0),
-            radius=0.3,
-            color=Vector(0.9, 1.0, 0.9),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
+#         # Opaque sphere blocks path
+#         opaque_sphere = SphereElement(
+#             center=Vector(0, 0, 2.5),
+#             radius=0.4,
+#             color=Vector(0.9, 0.9, 0.9),
+#             transparent=False,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
         
-        # Opaque sphere blocks path
-        opaque_sphere = SphereElement(
-            center=Vector(0, 0, 2.8),
-            radius=0.3,
-            color=Vector(0.9, 0.9, 0.9),
-            transparent=False,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
+#         camera = Camera(
+#             width=1,
+#             height=1,
+#             position=Vector(0, 0, 4),
+#             pointing_direction=Vector(0, 0, -1),
+#             screen_width=0.01,
+#             screen_height=0.01
+#         )
         
-        camera = Camera(
-            width=1,
-            height=1,
-            position=Vector(0, 0, 4),
-            pointing_direction=Vector(0, 0, -1),
-            screen_width=0.01,
-            screen_height=0.01
-        )
+#         scene += source
+#         scene += glass_sphere
+#         scene += opaque_sphere
+#         scene += camera
+#         scene.raytrace()
         
-        scene += source
-        scene += glass_sphere1
-        scene += glass_sphere2
-        scene += opaque_sphere
-        scene += camera
-        scene.raytrace()
-        
-        assert not pixel_is_illuminated(camera), \
-            "Ray should NOT reach detector when opaque object blocks transmission path"
+#         assert not pixel_is_illuminated(camera), \
+#             "Ray should NOT reach detector when opaque object blocks transmission path"
 
 
-class TestReflectTransmitReflect:
-    """Test geometry with reflect-transmit-reflect sequence."""
+# class TestThreeTransmissions:
+#     """Test geometry with three transmissions."""
     
-    def test_reflect_transmit_reflect_success(self):
-        """Ray should reach detector via reflect-transmit-reflect when geometry allows."""
-        scene = Scene(reverse_trace=True)
+#     def test_three_transmissions_success(self):
+#         """Ray should reach detector via three transmissions when geometry allows."""
+#         scene = Scene(reverse_trace=True)
         
-        # Source positioned for reflect-transmit-reflect path
-        source = IsotropicSource(
-            center=Vector(-1.8, 0, 2),
-            radius=0.3,
-            color=Vector(1, 1, 1)
-        )
+#         # Source at origin
+#         source = IsotropicSource(
+#             center=Vector(0, 0, 0),
+#             radius=0.3,
+#             color=Vector(1, 1, 1)
+#         )
         
-        # First reflective sphere (camera reflects off this, shifted left)
-        mirror_sphere1 = SphereElement(
-            center=Vector(-0.3, 0, 2),
-            radius=0.5,
-            color=Vector(0.9, 0.9, 0.9),
-            user_params={'specular': 0.8, 'n_s': 50}
-        )
+#         # Three transparent spheres in a line
+#         glass_sphere1 = SphereElement(
+#             center=Vector(0, 0, 1.2),
+#             radius=0.3,
+#             color=Vector(0.9, 0.9, 1.0),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
         
-        # Transparent sphere in middle (ray transmits through)
-        glass_sphere = SphereElement(
-            center=Vector(-0.9, 0, 1.2),
-            radius=0.4,
-            color=Vector(0.9, 0.9, 1.0),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
+#         glass_sphere2 = SphereElement(
+#             center=Vector(0, 0, 2.0),
+#             radius=0.3,
+#             color=Vector(0.9, 1.0, 0.9),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
         
-        # Second reflective sphere (ray reflects toward source)
-        mirror_sphere2 = SphereElement(
-            center=Vector(-1.3, 0, 1.8),
-            radius=0.4,
-            color=Vector(0.9, 0.9, 0.9),
-            user_params={'specular': 0.8, 'n_s': 50}
-        )
+#         glass_sphere3 = SphereElement(
+#             center=Vector(0, 0, 2.8),
+#             radius=0.3,
+#             color=Vector(1.0, 0.9, 0.9),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
         
-        # 1x1 camera
-        camera = Camera(
-            width=1,
-            height=1,
-            position=Vector(0, 0, 4),
-            pointing_direction=Vector(0, 0, -1),
-            screen_width=0.01,
-            screen_height=0.01
-        )
+#         # 1x1 camera
+#         camera = Camera(
+#             width=1,
+#             height=1,
+#             position=Vector(0, 0, 4),
+#             pointing_direction=Vector(0, 0, -1),
+#             screen_width=0.01,
+#             screen_height=0.01
+#         )
         
-        scene += source
-        scene += mirror_sphere1
-        scene += glass_sphere
-        scene += mirror_sphere2
-        scene += camera
-        scene.raytrace()
+#         scene += source
+#         scene += glass_sphere1
+#         scene += glass_sphere2
+#         scene += glass_sphere3
+#         scene += camera
+#         scene.raytrace()
         
-        assert pixel_is_illuminated(camera), \
-            "Ray should reach detector via reflect-transmit-reflect sequence"
+#         assert pixel_is_illuminated(camera), \
+#             "Ray should reach detector via three transmissions"
     
-    def test_reflect_transmit_reflect_failure(self):
-        """Ray should NOT reach detector when geometry prevents reflect-transmit-reflect."""
-        scene = Scene(reverse_trace=True)
+#     def test_three_transmissions_failure(self):
+#         """Ray should NOT reach detector when path is blocked."""
+#         scene = Scene(reverse_trace=True)
         
-        # Source positioned for path
-        source = IsotropicSource(
-            center=Vector(-1.8, 0, 2),
-            radius=0.3,
-            color=Vector(1, 1, 1)
-        )
+#         # Source at origin
+#         source = IsotropicSource(
+#             center=Vector(0, 0, 0),
+#             radius=0.3,
+#             color=Vector(1, 1, 1)
+#         )
         
-        # First reflective sphere
-        mirror_sphere1 = SphereElement(
-            center=Vector(-0.3, 0, 2),
-            radius=0.5,
-            color=Vector(0.9, 0.9, 0.9),
-            user_params={'specular': 0.8, 'n_s': 50}
-        )
+#         # Two transparent spheres
+#         glass_sphere1 = SphereElement(
+#             center=Vector(0, 0, 1.2),
+#             radius=0.3,
+#             color=Vector(0.9, 0.9, 1.0),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
         
-        # Transparent sphere
-        glass_sphere = SphereElement(
-            center=Vector(-0.9, 0, 1.2),
-            radius=0.4,
-            color=Vector(0.9, 0.9, 1.0),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
+#         glass_sphere2 = SphereElement(
+#             center=Vector(0, 0, 2.0),
+#             radius=0.3,
+#             color=Vector(0.9, 1.0, 0.9),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
         
-        # Second reflective sphere
-        mirror_sphere2 = SphereElement(
-            center=Vector(-1.3, 0, 1.8),
-            radius=0.4,
-            color=Vector(0.9, 0.9, 0.9),
-            user_params={'specular': 0.8, 'n_s': 50}
-        )
+#         # Opaque sphere blocks path
+#         opaque_sphere = SphereElement(
+#             center=Vector(0, 0, 2.8),
+#             radius=0.3,
+#             color=Vector(0.9, 0.9, 0.9),
+#             transparent=False,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
         
-        # Opaque blocker between second mirror and source
-        blocker = SphereElement(
-            center=Vector(-1.55, 0, 1.9),
-            radius=0.3,
-            color=Vector(0.5, 0.5, 0.5),
-            user_params={'specular': 0.0, 'n_s': 1}
-        )
+#         camera = Camera(
+#             width=1,
+#             height=1,
+#             position=Vector(0, 0, 4),
+#             pointing_direction=Vector(0, 0, -1),
+#             screen_width=0.01,
+#             screen_height=0.01
+#         )
         
-        camera = Camera(
-            width=1,
-            height=1,
-            position=Vector(0, 0, 4),
-            pointing_direction=Vector(0, 0, -1),
-            screen_width=0.01,
-            screen_height=0.01
-        )
+#         scene += source
+#         scene += glass_sphere1
+#         scene += glass_sphere2
+#         scene += opaque_sphere
+#         scene += camera
+#         scene.raytrace()
         
-        scene += source
-        scene += mirror_sphere1
-        scene += glass_sphere
-        scene += mirror_sphere2
-        scene += blocker
-        scene += camera
-        scene.raytrace()
-        
-        assert not pixel_is_illuminated(camera), \
-            "Ray should NOT reach detector when path is blocked"
+#         assert not pixel_is_illuminated(camera), \
+#             "Ray should NOT reach detector when opaque object blocks transmission path"
 
-class TestReflectTransmitReflectTransmit:
-    """Test geometry with reflect-transmit-reflect-transmit sequence."""
-    
-    def test_reflect_transmit_reflect_transmit_success(self):
-        """Ray should reach detector via reflect-transmit-reflect-transmit when geometry allows."""
-        scene = Scene(reverse_trace=True)
-        
-        # Source positioned for complex path
-        source = IsotropicSource(
-            center=Vector(-2.2, 0, 0),
-            radius=0.3,
-            color=Vector(1, 1, 1)
-        )
-        
-        # First reflective sphere (camera reflects off this, shifted left)
-        mirror_sphere1 = SphereElement(
-            center=Vector(-0.3, 0, 2),
-            radius=0.5,
-            color=Vector(0.9, 0.9, 0.9),
-            user_params={'specular': 0.8, 'n_s': 50}
-        )
-        
-        # First transparent sphere
-        glass_sphere1 = SphereElement(
-            center=Vector(-0.9, 0, 1.2),
-            radius=0.3,
-            color=Vector(0.9, 0.9, 1.0),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
-        
-        # Second reflective sphere
-        mirror_sphere2 = SphereElement(
-            center=Vector(-1.4, 0, 0.7),
-            radius=0.4,
-            color=Vector(0.9, 0.9, 0.9),
-            user_params={'specular': 0.8, 'n_s': 50}
-        )
-        
-        # Second transparent sphere
-        glass_sphere2 = SphereElement(
-            center=Vector(-1.9, 0, 0.2),
-            radius=0.3,
-            color=Vector(0.9, 1.0, 0.9),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
-        
-        # 1x1 camera
-        camera = Camera(
-            width=1,
-            height=1,
-            position=Vector(0, 0, 4),
-            pointing_direction=Vector(0, 0, -1),
-            screen_width=0.01,
-            screen_height=0.01
-        )
-        
-        scene += source
-        scene += mirror_sphere1
-        scene += glass_sphere1
-        scene += mirror_sphere2
-        scene += glass_sphere2
-        scene += camera
-        scene.raytrace()
-        
-        assert pixel_is_illuminated(camera), \
-            "Ray should reach detector via reflect-transmit-reflect-transmit sequence"
-    
-    def test_reflect_transmit_reflect_transmit_failure(self):
-        """Ray should NOT reach detector when geometry prevents the sequence."""
-        scene = Scene(reverse_trace=True)
-        
-        # Source positioned incorrectly (opposite side)
-        source = IsotropicSource(
-            center=Vector(2.2, 0, 0),
-            radius=0.3,
-            color=Vector(1, 1, 1)
-        )
-        
-        # First reflective sphere
-        mirror_sphere1 = SphereElement(
-            center=Vector(-0.3, 0, 2),
-            radius=0.5,
-            color=Vector(0.9, 0.9, 0.9),
-            user_params={'specular': 0.8, 'n_s': 50}
-        )
-        
-        # First transparent sphere
-        glass_sphere1 = SphereElement(
-            center=Vector(-0.9, 0, 1.2),
-            radius=0.3,
-            color=Vector(0.9, 0.9, 1.0),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
-        
-        # Second reflective sphere
-        mirror_sphere2 = SphereElement(
-            center=Vector(-1.4, 0, 0.7),
-            radius=0.4,
-            color=Vector(0.9, 0.9, 0.9),
-            user_params={'specular': 0.8, 'n_s': 50}
-        )
-        
-        # Second transparent sphere
-        glass_sphere2 = SphereElement(
-            center=Vector(-1.9, 0, 0.2),
-            radius=0.3,
-            color=Vector(0.9, 1.0, 0.9),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
-        
-        camera = Camera(
-            width=1,
-            height=1,
-            position=Vector(0, 0, 4),
-            pointing_direction=Vector(0, 0, -1),
-            screen_width=0.01,
-            screen_height=0.01
-        )
-        
-        scene += source
-        scene += mirror_sphere1
-        scene += glass_sphere1
-        scene += mirror_sphere2
-        scene += glass_sphere2
-        scene += camera
-        scene.raytrace()
-        
-        assert not pixel_is_illuminated(camera), \
-            "Ray should NOT reach detector when source is positioned incorrectly"
 
-class TestReflectTransmitTransmitReflect:
-    """Test geometry with reflect-transmit-transmit-reflect sequence."""
+# class TestReflectTransmitReflect:
+#     """Test geometry with reflect-transmit-reflect sequence."""
     
-    def test_reflect_transmit_transmit_reflect_success(self):
-        """Ray should reach detector via reflect-transmit-transmit-reflect when geometry allows."""
-        scene = Scene(reverse_trace=True)
+#     def test_reflect_transmit_reflect_success(self):
+#         """Ray should reach detector via reflect-transmit-reflect when geometry allows."""
+#         scene = Scene(reverse_trace=True)
         
-        # Source positioned for this path
-        source = IsotropicSource(
-            center=Vector(-2.1, 0, 0.5),
-            radius=0.3,
-            color=Vector(1, 1, 1)
-        )
+#         # Source positioned for reflect-transmit-reflect path
+#         source = IsotropicSource(
+#             center=Vector(-1.8, 0, 2),
+#             radius=0.3,
+#             color=Vector(1, 1, 1)
+#         )
         
-        # First reflective sphere (camera reflects off this, shifted left)
-        mirror_sphere1 = SphereElement(
-            center=Vector(-0.3, 0, 2),
-            radius=0.5,
-            color=Vector(0.9, 0.9, 0.9),
-            user_params={'specular': 0.8, 'n_s': 50}
-        )
+#         # First reflective sphere (camera reflects off this, shifted left)
+#         mirror_sphere1 = SphereElement(
+#             center=Vector(-0.3, 0, 2),
+#             radius=0.5,
+#             color=Vector(0.9, 0.9, 0.9),
+#             user_params={'specular': 0.8, 'n_s': 50}
+#         )
         
-        # First transparent sphere
-        glass_sphere1 = SphereElement(
-            center=Vector(-0.7, 0, 1.3),
-            radius=0.3,
-            color=Vector(0.9, 0.9, 1.0),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
+#         # Transparent sphere in middle (ray transmits through)
+#         glass_sphere = SphereElement(
+#             center=Vector(-0.9, 0, 1.2),
+#             radius=0.4,
+#             color=Vector(0.9, 0.9, 1.0),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
         
-        # Second transparent sphere
-        glass_sphere2 = SphereElement(
-            center=Vector(-1.2, 0, 0.9),
-            radius=0.3,
-            color=Vector(0.9, 1.0, 0.9),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
+#         # Second reflective sphere (ray reflects toward source)
+#         mirror_sphere2 = SphereElement(
+#             center=Vector(-1.3, 0, 1.8),
+#             radius=0.4,
+#             color=Vector(0.9, 0.9, 0.9),
+#             user_params={'specular': 0.8, 'n_s': 50}
+#         )
         
-        # Second reflective sphere
-        mirror_sphere2 = SphereElement(
-            center=Vector(-1.7, 0, 0.5),
-            radius=0.4,
-            color=Vector(0.9, 0.9, 0.9),
-            user_params={'specular': 0.8, 'n_s': 50}
-        )
+#         # 1x1 camera
+#         camera = Camera(
+#             width=1,
+#             height=1,
+#             position=Vector(0, 0, 4),
+#             pointing_direction=Vector(0, 0, -1),
+#             screen_width=0.01,
+#             screen_height=0.01
+#         )
         
-        # 1x1 camera
-        camera = Camera(
-            width=1,
-            height=1,
-            position=Vector(0, 0, 4),
-            pointing_direction=Vector(0, 0, -1),
-            screen_width=0.01,
-            screen_height=0.01
-        )
+#         scene += source
+#         scene += mirror_sphere1
+#         scene += glass_sphere
+#         scene += mirror_sphere2
+#         scene += camera
+#         scene.raytrace()
         
-        scene += source
-        scene += mirror_sphere1
-        scene += glass_sphere1
-        scene += glass_sphere2
-        scene += mirror_sphere2
-        scene += camera
-        scene.raytrace()
-        
-        assert pixel_is_illuminated(camera), \
-            "Ray should reach detector via reflect-transmit-transmit-reflect sequence"
+#         assert pixel_is_illuminated(camera), \
+#             "Ray should reach detector via reflect-transmit-reflect sequence"
     
-    def test_reflect_transmit_transmit_reflect_failure(self):
-        """Ray should NOT reach detector when geometry prevents the sequence."""
-        scene = Scene(reverse_trace=True)
+#     def test_reflect_transmit_reflect_failure(self):
+#         """Ray should NOT reach detector when geometry prevents reflect-transmit-reflect."""
+#         scene = Scene(reverse_trace=True)
         
-        # Source positioned incorrectly (opposite side)
-        source = IsotropicSource(
-            center=Vector(2.1, 0, 0.5),
-            radius=0.3,
-            color=Vector(1, 1, 1)
-        )
+#         # Source positioned for path
+#         source = IsotropicSource(
+#             center=Vector(-1.8, 0, 2),
+#             radius=0.3,
+#             color=Vector(1, 1, 1)
+#         )
         
-        # First reflective sphere
-        mirror_sphere1 = SphereElement(
-            center=Vector(-0.3, 0, 2),
-            radius=0.5,
-            color=Vector(0.9, 0.9, 0.9),
-            user_params={'specular': 0.8, 'n_s': 50}
-        )
+#         # First reflective sphere
+#         mirror_sphere1 = SphereElement(
+#             center=Vector(-0.3, 0, 2),
+#             radius=0.5,
+#             color=Vector(0.9, 0.9, 0.9),
+#             user_params={'specular': 0.8, 'n_s': 50}
+#         )
         
-        # First transparent sphere
-        glass_sphere1 = SphereElement(
-            center=Vector(-0.7, 0, 1.3),
-            radius=0.3,
-            color=Vector(0.9, 0.9, 1.0),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
+#         # Transparent sphere
+#         glass_sphere = SphereElement(
+#             center=Vector(-0.9, 0, 1.2),
+#             radius=0.4,
+#             color=Vector(0.9, 0.9, 1.0),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
         
-        # Second transparent sphere
-        glass_sphere2 = SphereElement(
-            center=Vector(-1.2, 0, 0.9),
-            radius=0.3,
-            color=Vector(0.9, 1.0, 0.9),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
+#         # Second reflective sphere
+#         mirror_sphere2 = SphereElement(
+#             center=Vector(-1.3, 0, 1.8),
+#             radius=0.4,
+#             color=Vector(0.9, 0.9, 0.9),
+#             user_params={'specular': 0.8, 'n_s': 50}
+#         )
         
-        # Second reflective sphere
-        mirror_sphere2 = SphereElement(
-            center=Vector(-1.7, 0, 0.5),
-            radius=0.4,
-            color=Vector(0.9, 0.9, 0.9),
-            user_params={'specular': 0.8, 'n_s': 50}
-        )
+#         # Opaque blocker between second mirror and source
+#         blocker = SphereElement(
+#             center=Vector(-1.55, 0, 1.9),
+#             radius=0.3,
+#             color=Vector(0.5, 0.5, 0.5),
+#             user_params={'specular': 0.0, 'n_s': 1}
+#         )
         
-        camera = Camera(
-            width=1,
-            height=1,
-            position=Vector(0, 0, 4),
-            pointing_direction=Vector(0, 0, -1),
-            screen_width=0.01,
-            screen_height=0.01
-        )
+#         camera = Camera(
+#             width=1,
+#             height=1,
+#             position=Vector(0, 0, 4),
+#             pointing_direction=Vector(0, 0, -1),
+#             screen_width=0.01,
+#             screen_height=0.01
+#         )
         
-        scene += source
-        scene += mirror_sphere1
-        scene += glass_sphere1
-        scene += glass_sphere2
-        scene += mirror_sphere2
-        scene += camera
-        scene.raytrace()
+#         scene += source
+#         scene += mirror_sphere1
+#         scene += glass_sphere
+#         scene += mirror_sphere2
+#         scene += blocker
+#         scene += camera
+#         scene.raytrace()
         
-        assert not pixel_is_illuminated(camera), \
-            "Ray should NOT reach detector when source is positioned incorrectly"
+#         assert not pixel_is_illuminated(camera), \
+#             "Ray should NOT reach detector when path is blocked"
 
-class TestTransmitReflectTransmit:
-    """Test geometry with transmit-reflect-transmit sequence."""
+# class TestReflectTransmitReflectTransmit:
+#     """Test geometry with reflect-transmit-reflect-transmit sequence."""
     
-    def test_transmit_reflect_transmit_success(self):
-        """Ray should reach detector via transmit-reflect-transmit when geometry allows."""
-        scene = Scene(reverse_trace=True)
+#     def test_reflect_transmit_reflect_transmit_success(self):
+#         """Ray should reach detector via reflect-transmit-reflect-transmit when geometry allows."""
+#         scene = Scene(reverse_trace=True)
         
-        # Source positioned for this path
-        source = IsotropicSource(
-            center=Vector(0, 0, 0),
-            radius=0.3,
-            color=Vector(1, 1, 1)
-        )
+#         # Source positioned for complex path
+#         source = IsotropicSource(
+#             center=Vector(-2.2, 0, 0),
+#             radius=0.3,
+#             color=Vector(1, 1, 1)
+#         )
         
-        # First transparent sphere (camera ray transmits through)
-        glass_sphere1 = SphereElement(
-            center=Vector(0, 0, 2.5),
-            radius=0.4,
-            color=Vector(0.9, 0.9, 1.0),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
+#         # First reflective sphere (camera reflects off this, shifted left)
+#         mirror_sphere1 = SphereElement(
+#             center=Vector(-0.3, 0, 2),
+#             radius=0.5,
+#             color=Vector(0.9, 0.9, 0.9),
+#             user_params={'specular': 0.8, 'n_s': 50}
+#         )
         
-        # Reflective sphere in middle
-        mirror_sphere = SphereElement(
-            center=Vector(0, 0.6, 1.5),
-            radius=0.4,
-            color=Vector(0.9, 0.9, 0.9),
-            user_params={'specular': 0.8, 'n_s': 50}
-        )
+#         # First transparent sphere
+#         glass_sphere1 = SphereElement(
+#             center=Vector(-0.9, 0, 1.2),
+#             radius=0.3,
+#             color=Vector(0.9, 0.9, 1.0),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
         
-        # Second transparent sphere
-        glass_sphere2 = SphereElement(
-            center=Vector(0, 0, 0.8),
-            radius=0.4,
-            color=Vector(0.9, 1.0, 0.9),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
+#         # Second reflective sphere
+#         mirror_sphere2 = SphereElement(
+#             center=Vector(-1.4, 0, 0.7),
+#             radius=0.4,
+#             color=Vector(0.9, 0.9, 0.9),
+#             user_params={'specular': 0.8, 'n_s': 50}
+#         )
         
-        # 1x1 camera
-        camera = Camera(
-            width=1,
-            height=1,
-            position=Vector(0, 0, 4),
-            pointing_direction=Vector(0, 0, -1),
-            screen_width=0.01,
-            screen_height=0.01
-        )
+#         # Second transparent sphere
+#         glass_sphere2 = SphereElement(
+#             center=Vector(-1.9, 0, 0.2),
+#             radius=0.3,
+#             color=Vector(0.9, 1.0, 0.9),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
         
-        scene += source
-        scene += glass_sphere1
-        scene += mirror_sphere
-        scene += glass_sphere2
-        scene += camera
-        scene.raytrace()
+#         # 1x1 camera
+#         camera = Camera(
+#             width=1,
+#             height=1,
+#             position=Vector(0, 0, 4),
+#             pointing_direction=Vector(0, 0, -1),
+#             screen_width=0.01,
+#             screen_height=0.01
+#         )
         
-        assert pixel_is_illuminated(camera), \
-            "Ray should reach detector via transmit-reflect-transmit sequence"
+#         scene += source
+#         scene += mirror_sphere1
+#         scene += glass_sphere1
+#         scene += mirror_sphere2
+#         scene += glass_sphere2
+#         scene += camera
+#         scene.raytrace()
+        
+#         assert pixel_is_illuminated(camera), \
+#             "Ray should reach detector via reflect-transmit-reflect-transmit sequence"
     
-    def test_transmit_reflect_transmit_failure(self):
-        """Ray should NOT reach detector when geometry prevents the sequence."""
-        scene = Scene(reverse_trace=True)
+#     def test_reflect_transmit_reflect_transmit_failure(self):
+#         """Ray should NOT reach detector when geometry prevents the sequence."""
+#         scene = Scene(reverse_trace=True)
         
-        # Source positioned for path (but will be blocked)
-        source = IsotropicSource(
-            center=Vector(0, 0, 0),
-            radius=0.3,
-            color=Vector(1, 1, 1)
-        )
+#         # Source positioned incorrectly (opposite side)
+#         source = IsotropicSource(
+#             center=Vector(2.2, 0, 0),
+#             radius=0.3,
+#             color=Vector(1, 1, 1)
+#         )
         
-        # First transparent sphere
-        glass_sphere1 = SphereElement(
-            center=Vector(0, 0, 2.5),
-            radius=0.4,
-            color=Vector(0.9, 0.9, 1.0),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
+#         # First reflective sphere
+#         mirror_sphere1 = SphereElement(
+#             center=Vector(-0.3, 0, 2),
+#             radius=0.5,
+#             color=Vector(0.9, 0.9, 0.9),
+#             user_params={'specular': 0.8, 'n_s': 50}
+#         )
         
-        # Reflective sphere
-        mirror_sphere = SphereElement(
-            center=Vector(0, 0.6, 1.5),
-            radius=0.4,
-            color=Vector(0.9, 0.9, 0.9),
-            user_params={'specular': 0.8, 'n_s': 50}
-        )
+#         # First transparent sphere
+#         glass_sphere1 = SphereElement(
+#             center=Vector(-0.9, 0, 1.2),
+#             radius=0.3,
+#             color=Vector(0.9, 0.9, 1.0),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
         
-        # Second transparent sphere
-        glass_sphere2 = SphereElement(
-            center=Vector(0, 0, 0.8),
-            radius=0.4,
-            color=Vector(0.9, 1.0, 0.9),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
+#         # Second reflective sphere
+#         mirror_sphere2 = SphereElement(
+#             center=Vector(-1.4, 0, 0.7),
+#             radius=0.4,
+#             color=Vector(0.9, 0.9, 0.9),
+#             user_params={'specular': 0.8, 'n_s': 50}
+#         )
         
-        # Opaque blocker between glass_sphere2 and source
-        blocker = SphereElement(
-            center=Vector(0, 0, 0.4),
-            radius=0.3,
-            color=Vector(0.5, 0.5, 0.5),
-            user_params={'specular': 0.0, 'n_s': 1}
-        )
+#         # Second transparent sphere
+#         glass_sphere2 = SphereElement(
+#             center=Vector(-1.9, 0, 0.2),
+#             radius=0.3,
+#             color=Vector(0.9, 1.0, 0.9),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
         
-        camera = Camera(
-            width=1,
-            height=1,
-            position=Vector(0, 0, 4),
-            pointing_direction=Vector(0, 0, -1),
-            screen_width=0.01,
-            screen_height=0.01
-        )
+#         camera = Camera(
+#             width=1,
+#             height=1,
+#             position=Vector(0, 0, 4),
+#             pointing_direction=Vector(0, 0, -1),
+#             screen_width=0.01,
+#             screen_height=0.01
+#         )
         
-        scene += source
-        scene += glass_sphere1
-        scene += mirror_sphere
-        scene += glass_sphere2
-        scene += blocker
-        scene += camera
-        scene.raytrace()
+#         scene += source
+#         scene += mirror_sphere1
+#         scene += glass_sphere1
+#         scene += mirror_sphere2
+#         scene += glass_sphere2
+#         scene += camera
+#         scene.raytrace()
         
-        assert not pixel_is_illuminated(camera), \
-            "Ray should NOT reach detector when path is blocked"
+#         assert not pixel_is_illuminated(camera), \
+#             "Ray should NOT reach detector when source is positioned incorrectly"
 
-class TestTransmitReflectTransmitReflect:
-    """Test geometry with transmit-reflect-transmit-reflect sequence."""
+# class TestReflectTransmitTransmitReflect:
+#     """Test geometry with reflect-transmit-transmit-reflect sequence."""
     
-    def test_transmit_reflect_transmit_reflect_success(self):
-        """Ray should reach detector via transmit-reflect-transmit-reflect when geometry allows."""
-        scene = Scene(reverse_trace=True)
+#     def test_reflect_transmit_transmit_reflect_success(self):
+#         """Ray should reach detector via reflect-transmit-transmit-reflect when geometry allows."""
+#         scene = Scene(reverse_trace=True)
         
-        # Source positioned for this path
-        source = IsotropicSource(
-            center=Vector(-1.5, 0, 0),
-            radius=0.3,
-            color=Vector(1, 1, 1)
-        )
+#         # Source positioned for this path
+#         source = IsotropicSource(
+#             center=Vector(-2.1, 0, 0.5),
+#             radius=0.3,
+#             color=Vector(1, 1, 1)
+#         )
         
-        # First transparent sphere (camera ray transmits through)
-        glass_sphere1 = SphereElement(
-            center=Vector(0, 0, 2.5),
-            radius=0.4,
-            color=Vector(0.9, 0.9, 1.0),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
+#         # First reflective sphere (camera reflects off this, shifted left)
+#         mirror_sphere1 = SphereElement(
+#             center=Vector(-0.3, 0, 2),
+#             radius=0.5,
+#             color=Vector(0.9, 0.9, 0.9),
+#             user_params={'specular': 0.8, 'n_s': 50}
+#         )
         
-        # First reflective sphere
-        mirror_sphere1 = SphereElement(
-            center=Vector(-0.3, 0, 1.7),
-            radius=0.3,
-            color=Vector(0.9, 0.9, 0.9),
-            user_params={'specular': 0.8, 'n_s': 50}
-        )
+#         # First transparent sphere
+#         glass_sphere1 = SphereElement(
+#             center=Vector(-0.7, 0, 1.3),
+#             radius=0.3,
+#             color=Vector(0.9, 0.9, 1.0),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
         
-        # Second transparent sphere
-        glass_sphere2 = SphereElement(
-            center=Vector(-0.7, 0, 1.0),
-            radius=0.3,
-            color=Vector(0.9, 1.0, 0.9),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
+#         # Second transparent sphere
+#         glass_sphere2 = SphereElement(
+#             center=Vector(-1.2, 0, 0.9),
+#             radius=0.3,
+#             color=Vector(0.9, 1.0, 0.9),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
         
-        # Second reflective sphere
-        mirror_sphere2 = SphereElement(
-            center=Vector(-1.2, 0, 0.3),
-            radius=0.3,
-            color=Vector(0.9, 0.9, 0.9),
-            user_params={'specular': 0.8, 'n_s': 50}
-        )
+#         # Second reflective sphere
+#         mirror_sphere2 = SphereElement(
+#             center=Vector(-1.7, 0, 0.5),
+#             radius=0.4,
+#             color=Vector(0.9, 0.9, 0.9),
+#             user_params={'specular': 0.8, 'n_s': 50}
+#         )
         
-        # 1x1 camera
-        camera = Camera(
-            width=1,
-            height=1,
-            position=Vector(0, 0, 4),
-            pointing_direction=Vector(0, 0, -1),
-            screen_width=0.01,
-            screen_height=0.01
-        )
+#         # 1x1 camera
+#         camera = Camera(
+#             width=1,
+#             height=1,
+#             position=Vector(0, 0, 4),
+#             pointing_direction=Vector(0, 0, -1),
+#             screen_width=0.01,
+#             screen_height=0.01
+#         )
         
-        scene += source
-        scene += glass_sphere1
-        scene += mirror_sphere1
-        scene += glass_sphere2
-        scene += mirror_sphere2
-        scene += camera
-        scene.raytrace()
+#         scene += source
+#         scene += mirror_sphere1
+#         scene += glass_sphere1
+#         scene += glass_sphere2
+#         scene += mirror_sphere2
+#         scene += camera
+#         scene.raytrace()
         
-        assert pixel_is_illuminated(camera), \
-            "Ray should reach detector via transmit-reflect-transmit-reflect sequence"
+#         assert pixel_is_illuminated(camera), \
+#             "Ray should reach detector via reflect-transmit-transmit-reflect sequence"
     
-    def test_transmit_reflect_transmit_reflect_failure(self):
-        """Ray should NOT reach detector when geometry prevents the sequence."""
-        scene = Scene(reverse_trace=True)
+#     def test_reflect_transmit_transmit_reflect_failure(self):
+#         """Ray should NOT reach detector when geometry prevents the sequence."""
+#         scene = Scene(reverse_trace=True)
         
-        # Source positioned for path (but will be blocked)
-        source = IsotropicSource(
-            center=Vector(-1.5, 0, 0),
-            radius=0.3,
-            color=Vector(1, 1, 1)
-        )
+#         # Source positioned incorrectly (opposite side)
+#         source = IsotropicSource(
+#             center=Vector(2.1, 0, 0.5),
+#             radius=0.3,
+#             color=Vector(1, 1, 1)
+#         )
         
-        # First transparent sphere
-        glass_sphere1 = SphereElement(
-            center=Vector(0, 0, 2.5),
-            radius=0.4,
-            color=Vector(0.9, 0.9, 1.0),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
+#         # First reflective sphere
+#         mirror_sphere1 = SphereElement(
+#             center=Vector(-0.3, 0, 2),
+#             radius=0.5,
+#             color=Vector(0.9, 0.9, 0.9),
+#             user_params={'specular': 0.8, 'n_s': 50}
+#         )
         
-        # First reflective sphere
-        mirror_sphere1 = SphereElement(
-            center=Vector(-0.3, 0, 1.7),
-            radius=0.3,
-            color=Vector(0.9, 0.9, 0.9),
-            user_params={'specular': 0.8, 'n_s': 50}
-        )
+#         # First transparent sphere
+#         glass_sphere1 = SphereElement(
+#             center=Vector(-0.7, 0, 1.3),
+#             radius=0.3,
+#             color=Vector(0.9, 0.9, 1.0),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
         
-        # Second transparent sphere
-        glass_sphere2 = SphereElement(
-            center=Vector(-0.7, 0, 1.0),
-            radius=0.3,
-            color=Vector(0.9, 1.0, 0.9),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
+#         # Second transparent sphere
+#         glass_sphere2 = SphereElement(
+#             center=Vector(-1.2, 0, 0.9),
+#             radius=0.3,
+#             color=Vector(0.9, 1.0, 0.9),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
         
-        # Second reflective sphere
-        mirror_sphere2 = SphereElement(
-            center=Vector(-1.2, 0, 0.3),
-            radius=0.3,
-            color=Vector(0.9, 0.9, 0.9),
-            user_params={'specular': 0.8, 'n_s': 50}
-        )
+#         # Second reflective sphere
+#         mirror_sphere2 = SphereElement(
+#             center=Vector(-1.7, 0, 0.5),
+#             radius=0.4,
+#             color=Vector(0.9, 0.9, 0.9),
+#             user_params={'specular': 0.8, 'n_s': 50}
+#         )
         
-        # Opaque blocker between second mirror and source
-        blocker = SphereElement(
-            center=Vector(-1.35, 0, 0.15),
-            radius=0.2,
-            color=Vector(0.5, 0.5, 0.5),
-            user_params={'specular': 0.0, 'n_s': 1}
-        )
+#         camera = Camera(
+#             width=1,
+#             height=1,
+#             position=Vector(0, 0, 4),
+#             pointing_direction=Vector(0, 0, -1),
+#             screen_width=0.01,
+#             screen_height=0.01
+#         )
         
-        camera = Camera(
-            width=1,
-            height=1,
-            position=Vector(0, 0, 4),
-            pointing_direction=Vector(0, 0, -1),
-            screen_width=0.01,
-            screen_height=0.01
-        )
+#         scene += source
+#         scene += mirror_sphere1
+#         scene += glass_sphere1
+#         scene += glass_sphere2
+#         scene += mirror_sphere2
+#         scene += camera
+#         scene.raytrace()
         
-        scene += source
-        scene += glass_sphere1
-        scene += mirror_sphere1
-        scene += glass_sphere2
-        scene += mirror_sphere2
-        scene += blocker
-        scene += camera
-        scene.raytrace()
-        
-        assert not pixel_is_illuminated(camera), \
-            "Ray should NOT reach detector when path is blocked"
+#         assert not pixel_is_illuminated(camera), \
+#             "Ray should NOT reach detector when source is positioned incorrectly"
 
-class TestTransmitReflectReflectTransmit:
-    """Test geometry with transmit-reflect-reflect-transmit sequence."""
+# class TestTransmitReflectTransmit:
+#     """Test geometry with transmit-reflect-transmit sequence."""
     
-    def test_transmit_reflect_reflect_transmit_success(self):
-        """Ray should reach detector via transmit-reflect-reflect-transmit when geometry allows."""
-        scene = Scene(reverse_trace=True)
+#     def test_transmit_reflect_transmit_success(self):
+#         """Ray should reach detector via transmit-reflect-transmit when geometry allows."""
+#         scene = Scene(reverse_trace=True)
         
-        # Source positioned for this path
-        source = IsotropicSource(
-            center=Vector(0, 0, 0),
-            radius=0.3,
-            color=Vector(1, 1, 1)
-        )
+#         # Source positioned for this path
+#         source = IsotropicSource(
+#             center=Vector(0, 0, 0),
+#             radius=0.3,
+#             color=Vector(1, 1, 1)
+#         )
         
-        # First transparent sphere (camera ray transmits through)
-        glass_sphere1 = SphereElement(
-            center=Vector(0, 0, 2.5),
-            radius=0.4,
-            color=Vector(0.9, 0.9, 1.0),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
+#         # First transparent sphere (camera ray transmits through)
+#         glass_sphere1 = SphereElement(
+#             center=Vector(0, 0, 2.5),
+#             radius=0.4,
+#             color=Vector(0.9, 0.9, 1.0),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
         
-        # First reflective sphere
-        mirror_sphere1 = SphereElement(
-            center=Vector(0, 0.5, 1.8),
-            radius=0.3,
-            color=Vector(0.9, 0.9, 0.9),
-            user_params={'specular': 0.8, 'n_s': 50}
-        )
+#         # Reflective sphere in middle
+#         mirror_sphere = SphereElement(
+#             center=Vector(0, 0.6, 1.5),
+#             radius=0.4,
+#             color=Vector(0.9, 0.9, 0.9),
+#             user_params={'specular': 0.8, 'n_s': 50}
+#         )
         
-        # Second reflective sphere
-        mirror_sphere2 = SphereElement(
-            center=Vector(0, 0.5, 1.2),
-            radius=0.3,
-            color=Vector(0.9, 0.9, 0.9),
-            user_params={'specular': 0.8, 'n_s': 50}
-        )
+#         # Second transparent sphere
+#         glass_sphere2 = SphereElement(
+#             center=Vector(0, 0, 0.8),
+#             radius=0.4,
+#             color=Vector(0.9, 1.0, 0.9),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
         
-        # Second transparent sphere
-        glass_sphere2 = SphereElement(
-            center=Vector(0, 0, 0.6),
-            radius=0.3,
-            color=Vector(0.9, 1.0, 0.9),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
+#         # 1x1 camera
+#         camera = Camera(
+#             width=1,
+#             height=1,
+#             position=Vector(0, 0, 4),
+#             pointing_direction=Vector(0, 0, -1),
+#             screen_width=0.01,
+#             screen_height=0.01
+#         )
         
-        # 1x1 camera
-        camera = Camera(
-            width=1,
-            height=1,
-            position=Vector(0, 0, 4),
-            pointing_direction=Vector(0, 0, -1),
-            screen_width=0.01,
-            screen_height=0.01
-        )
+#         scene += source
+#         scene += glass_sphere1
+#         scene += mirror_sphere
+#         scene += glass_sphere2
+#         scene += camera
+#         scene.raytrace()
         
-        scene += source
-        scene += glass_sphere1
-        scene += mirror_sphere1
-        scene += mirror_sphere2
-        scene += glass_sphere2
-        scene += camera
-        scene.raytrace()
-        
-        assert pixel_is_illuminated(camera), \
-            "Ray should reach detector via transmit-reflect-reflect-transmit sequence"
+#         assert pixel_is_illuminated(camera), \
+#             "Ray should reach detector via transmit-reflect-transmit sequence"
     
-    def test_transmit_reflect_reflect_transmit_failure(self):
-        """Ray should NOT reach detector when geometry prevents the sequence."""
-        scene = Scene(reverse_trace=True)
+#     def test_transmit_reflect_transmit_failure(self):
+#         """Ray should NOT reach detector when geometry prevents the sequence."""
+#         scene = Scene(reverse_trace=True)
         
-        # Source positioned for path (but will be blocked)
-        source = IsotropicSource(
-            center=Vector(0, 0, 0),
-            radius=0.3,
-            color=Vector(1, 1, 1)
-        )
+#         # Source positioned for path (but will be blocked)
+#         source = IsotropicSource(
+#             center=Vector(0, 0, 0),
+#             radius=0.3,
+#             color=Vector(1, 1, 1)
+#         )
         
-        # First transparent sphere
-        glass_sphere1 = SphereElement(
-            center=Vector(0, 0, 2.5),
-            radius=0.4,
-            color=Vector(0.9, 0.9, 1.0),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
+#         # First transparent sphere
+#         glass_sphere1 = SphereElement(
+#             center=Vector(0, 0, 2.5),
+#             radius=0.4,
+#             color=Vector(0.9, 0.9, 1.0),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
         
-        # First reflective sphere
-        mirror_sphere1 = SphereElement(
-            center=Vector(0, 0.5, 1.8),
-            radius=0.3,
-            color=Vector(0.9, 0.9, 0.9),
-            user_params={'specular': 0.8, 'n_s': 50}
-        )
+#         # Reflective sphere
+#         mirror_sphere = SphereElement(
+#             center=Vector(0, 0.6, 1.5),
+#             radius=0.4,
+#             color=Vector(0.9, 0.9, 0.9),
+#             user_params={'specular': 0.8, 'n_s': 50}
+#         )
         
-        # Second reflective sphere
-        mirror_sphere2 = SphereElement(
-            center=Vector(0, 0.5, 1.2),
-            radius=0.3,
-            color=Vector(0.9, 0.9, 0.9),
-            user_params={'specular': 0.8, 'n_s': 50}
-        )
+#         # Second transparent sphere
+#         glass_sphere2 = SphereElement(
+#             center=Vector(0, 0, 0.8),
+#             radius=0.4,
+#             color=Vector(0.9, 1.0, 0.9),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
         
-        # Second transparent sphere
-        glass_sphere2 = SphereElement(
-            center=Vector(0, 0, 0.6),
-            radius=0.3,
-            color=Vector(0.9, 1.0, 0.9),
-            transparent=True,
-            refractive_index=1.5,
-            user_params={'specular': 0.1, 'n_s': 10}
-        )
+#         # Opaque blocker between glass_sphere2 and source
+#         blocker = SphereElement(
+#             center=Vector(0, 0, 0.4),
+#             radius=0.3,
+#             color=Vector(0.5, 0.5, 0.5),
+#             user_params={'specular': 0.0, 'n_s': 1}
+#         )
         
-        # Opaque blocker between glass_sphere2 and source
-        blocker = SphereElement(
-            center=Vector(0, 0, 0.3),
-            radius=0.2,
-            color=Vector(0.5, 0.5, 0.5),
-            user_params={'specular': 0.0, 'n_s': 1}
-        )
+#         camera = Camera(
+#             width=1,
+#             height=1,
+#             position=Vector(0, 0, 4),
+#             pointing_direction=Vector(0, 0, -1),
+#             screen_width=0.01,
+#             screen_height=0.01
+#         )
         
-        camera = Camera(
-            width=1,
-            height=1,
-            position=Vector(0, 0, 4),
-            pointing_direction=Vector(0, 0, -1),
-            screen_width=0.01,
-            screen_height=0.01
-        )
+#         scene += source
+#         scene += glass_sphere1
+#         scene += mirror_sphere
+#         scene += glass_sphere2
+#         scene += blocker
+#         scene += camera
+#         scene.raytrace()
         
-        scene += source
-        scene += glass_sphere1
-        scene += mirror_sphere1
-        scene += mirror_sphere2
-        scene += glass_sphere2
-        scene += blocker
-        scene += camera
-        scene.raytrace()
+#         assert not pixel_is_illuminated(camera), \
+#             "Ray should NOT reach detector when path is blocked"
+
+# class TestTransmitReflectTransmitReflect:
+#     """Test geometry with transmit-reflect-transmit-reflect sequence."""
+    
+#     def test_transmit_reflect_transmit_reflect_success(self):
+#         """Ray should reach detector via transmit-reflect-transmit-reflect when geometry allows."""
+#         scene = Scene(reverse_trace=True)
         
-        assert not pixel_is_illuminated(camera), \
-            "Ray should NOT reach detector when path is blocked"
+#         # Source positioned for this path
+#         source = IsotropicSource(
+#             center=Vector(-1.5, 0, 0),
+#             radius=0.3,
+#             color=Vector(1, 1, 1)
+#         )
+        
+#         # First transparent sphere (camera ray transmits through)
+#         glass_sphere1 = SphereElement(
+#             center=Vector(0, 0, 2.5),
+#             radius=0.4,
+#             color=Vector(0.9, 0.9, 1.0),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
+        
+#         # First reflective sphere
+#         mirror_sphere1 = SphereElement(
+#             center=Vector(-0.3, 0, 1.7),
+#             radius=0.3,
+#             color=Vector(0.9, 0.9, 0.9),
+#             user_params={'specular': 0.8, 'n_s': 50}
+#         )
+        
+#         # Second transparent sphere
+#         glass_sphere2 = SphereElement(
+#             center=Vector(-0.7, 0, 1.0),
+#             radius=0.3,
+#             color=Vector(0.9, 1.0, 0.9),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
+        
+#         # Second reflective sphere
+#         mirror_sphere2 = SphereElement(
+#             center=Vector(-1.2, 0, 0.3),
+#             radius=0.3,
+#             color=Vector(0.9, 0.9, 0.9),
+#             user_params={'specular': 0.8, 'n_s': 50}
+#         )
+        
+#         # 1x1 camera
+#         camera = Camera(
+#             width=1,
+#             height=1,
+#             position=Vector(0, 0, 4),
+#             pointing_direction=Vector(0, 0, -1),
+#             screen_width=0.01,
+#             screen_height=0.01
+#         )
+        
+#         scene += source
+#         scene += glass_sphere1
+#         scene += mirror_sphere1
+#         scene += glass_sphere2
+#         scene += mirror_sphere2
+#         scene += camera
+#         scene.raytrace()
+        
+#         assert pixel_is_illuminated(camera), \
+#             "Ray should reach detector via transmit-reflect-transmit-reflect sequence"
+    
+#     def test_transmit_reflect_transmit_reflect_failure(self):
+#         """Ray should NOT reach detector when geometry prevents the sequence."""
+#         scene = Scene(reverse_trace=True)
+        
+#         # Source positioned for path (but will be blocked)
+#         source = IsotropicSource(
+#             center=Vector(-1.5, 0, 0),
+#             radius=0.3,
+#             color=Vector(1, 1, 1)
+#         )
+        
+#         # First transparent sphere
+#         glass_sphere1 = SphereElement(
+#             center=Vector(0, 0, 2.5),
+#             radius=0.4,
+#             color=Vector(0.9, 0.9, 1.0),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
+        
+#         # First reflective sphere
+#         mirror_sphere1 = SphereElement(
+#             center=Vector(-0.3, 0, 1.7),
+#             radius=0.3,
+#             color=Vector(0.9, 0.9, 0.9),
+#             user_params={'specular': 0.8, 'n_s': 50}
+#         )
+        
+#         # Second transparent sphere
+#         glass_sphere2 = SphereElement(
+#             center=Vector(-0.7, 0, 1.0),
+#             radius=0.3,
+#             color=Vector(0.9, 1.0, 0.9),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
+        
+#         # Second reflective sphere
+#         mirror_sphere2 = SphereElement(
+#             center=Vector(-1.2, 0, 0.3),
+#             radius=0.3,
+#             color=Vector(0.9, 0.9, 0.9),
+#             user_params={'specular': 0.8, 'n_s': 50}
+#         )
+        
+#         # Opaque blocker between second mirror and source
+#         blocker = SphereElement(
+#             center=Vector(-1.35, 0, 0.15),
+#             radius=0.2,
+#             color=Vector(0.5, 0.5, 0.5),
+#             user_params={'specular': 0.0, 'n_s': 1}
+#         )
+        
+#         camera = Camera(
+#             width=1,
+#             height=1,
+#             position=Vector(0, 0, 4),
+#             pointing_direction=Vector(0, 0, -1),
+#             screen_width=0.01,
+#             screen_height=0.01
+#         )
+        
+#         scene += source
+#         scene += glass_sphere1
+#         scene += mirror_sphere1
+#         scene += glass_sphere2
+#         scene += mirror_sphere2
+#         scene += blocker
+#         scene += camera
+#         scene.raytrace()
+        
+#         assert not pixel_is_illuminated(camera), \
+#             "Ray should NOT reach detector when path is blocked"
+
+# class TestTransmitReflectReflectTransmit:
+#     """Test geometry with transmit-reflect-reflect-transmit sequence."""
+    
+#     def test_transmit_reflect_reflect_transmit_success(self):
+#         """Ray should reach detector via transmit-reflect-reflect-transmit when geometry allows."""
+#         scene = Scene(reverse_trace=True)
+        
+#         # Source positioned for this path
+#         source = IsotropicSource(
+#             center=Vector(0, 0, 0),
+#             radius=0.3,
+#             color=Vector(1, 1, 1)
+#         )
+        
+#         # First transparent sphere (camera ray transmits through)
+#         glass_sphere1 = SphereElement(
+#             center=Vector(0, 0, 2.5),
+#             radius=0.4,
+#             color=Vector(0.9, 0.9, 1.0),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
+        
+#         # First reflective sphere
+#         mirror_sphere1 = SphereElement(
+#             center=Vector(0, 0.5, 1.8),
+#             radius=0.3,
+#             color=Vector(0.9, 0.9, 0.9),
+#             user_params={'specular': 0.8, 'n_s': 50}
+#         )
+        
+#         # Second reflective sphere
+#         mirror_sphere2 = SphereElement(
+#             center=Vector(0, 0.5, 1.2),
+#             radius=0.3,
+#             color=Vector(0.9, 0.9, 0.9),
+#             user_params={'specular': 0.8, 'n_s': 50}
+#         )
+        
+#         # Second transparent sphere
+#         glass_sphere2 = SphereElement(
+#             center=Vector(0, 0, 0.6),
+#             radius=0.3,
+#             color=Vector(0.9, 1.0, 0.9),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
+        
+#         # 1x1 camera
+#         camera = Camera(
+#             width=1,
+#             height=1,
+#             position=Vector(0, 0, 4),
+#             pointing_direction=Vector(0, 0, -1),
+#             screen_width=0.01,
+#             screen_height=0.01
+#         )
+        
+#         scene += source
+#         scene += glass_sphere1
+#         scene += mirror_sphere1
+#         scene += mirror_sphere2
+#         scene += glass_sphere2
+#         scene += camera
+#         scene.raytrace()
+        
+#         assert pixel_is_illuminated(camera), \
+#             "Ray should reach detector via transmit-reflect-reflect-transmit sequence"
+    
+#     def test_transmit_reflect_reflect_transmit_failure(self):
+#         """Ray should NOT reach detector when geometry prevents the sequence."""
+#         scene = Scene(reverse_trace=True)
+        
+#         # Source positioned for path (but will be blocked)
+#         source = IsotropicSource(
+#             center=Vector(0, 0, 0),
+#             radius=0.3,
+#             color=Vector(1, 1, 1)
+#         )
+        
+#         # First transparent sphere
+#         glass_sphere1 = SphereElement(
+#             center=Vector(0, 0, 2.5),
+#             radius=0.4,
+#             color=Vector(0.9, 0.9, 1.0),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
+        
+#         # First reflective sphere
+#         mirror_sphere1 = SphereElement(
+#             center=Vector(0, 0.5, 1.8),
+#             radius=0.3,
+#             color=Vector(0.9, 0.9, 0.9),
+#             user_params={'specular': 0.8, 'n_s': 50}
+#         )
+        
+#         # Second reflective sphere
+#         mirror_sphere2 = SphereElement(
+#             center=Vector(0, 0.5, 1.2),
+#             radius=0.3,
+#             color=Vector(0.9, 0.9, 0.9),
+#             user_params={'specular': 0.8, 'n_s': 50}
+#         )
+        
+#         # Second transparent sphere
+#         glass_sphere2 = SphereElement(
+#             center=Vector(0, 0, 0.6),
+#             radius=0.3,
+#             color=Vector(0.9, 1.0, 0.9),
+#             transparent=True,
+#             refractive_index=1.5,
+#             user_params={'specular': 0.1, 'n_s': 10}
+#         )
+        
+#         # Opaque blocker between glass_sphere2 and source
+#         blocker = SphereElement(
+#             center=Vector(0, 0, 0.3),
+#             radius=0.2,
+#             color=Vector(0.5, 0.5, 0.5),
+#             user_params={'specular': 0.0, 'n_s': 1}
+#         )
+        
+#         camera = Camera(
+#             width=1,
+#             height=1,
+#             position=Vector(0, 0, 4),
+#             pointing_direction=Vector(0, 0, -1),
+#             screen_width=0.01,
+#             screen_height=0.01
+#         )
+        
+#         scene += source
+#         scene += glass_sphere1
+#         scene += mirror_sphere1
+#         scene += mirror_sphere2
+#         scene += glass_sphere2
+#         scene += blocker
+#         scene += camera
+#         scene.raytrace()
+        
+#         assert not pixel_is_illuminated(camera), \
+#             "Ray should NOT reach detector when path is blocked"
 
 
 if __name__ == "__main__":

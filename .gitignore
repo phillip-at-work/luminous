@@ -2,3 +2,7 @@ __pycache__/
 dist/
 *.egg-info/
 .DS_Store
+*.aux
+*.fdb_latexmk
+*.synctex.gz
+*.fls

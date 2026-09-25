@@ -4,6 +4,7 @@ import sys
 
 from src.state_machine.state_machine import MockNode, TopologicalRayTracer
 
+# print_debug_output("debug_output.py", lane_history)
 def print_debug_output(filename, lane_history):
     with open(filename, "w", encoding="utf-8") as f:
         # 1. Inspect the depth: Check if the first element is a list
@@ -54,9 +55,8 @@ def print_debug_output(filename, lane_history):
 #
 #
 
-
 # =========================================================================
-# TEST 1: Source in Direct View of Detector
+# TEST 1: Pristine Direct View
 # =========================================================================
 def test_source_in_direct_view():
     """Tests a pristine environment where nothing blocks or intersects the rays."""
@@ -68,7 +68,16 @@ def test_source_in_direct_view():
     )
     
     batch_size = 2
-    output_rays = tracer.raytrace(batch_size=batch_size, MOCK_distances_timeline=[])
+    # Matrix layout: [SOURCE_A] (No elements)
+    step_0_distances = np.array([
+        [5.0],  # Lane 0 sees source directly at 5.0
+        [5.0]   # Lane 1 sees source directly at 5.0
+    ])
+    
+    output_rays = tracer.raytrace(batch_size=batch_size, MOCK_distances_timeline=[step_0_distances])
+    lane_history = tracer.tracker.history[0]
+
+    # print_debug_output("debug_output.py", lane_history)
     
     expected_sequence = [
         "TYPE: ORIGIN | path: DETECTOR_DET_1 | target: DET_1 | action: init_trace",
@@ -76,285 +85,566 @@ def test_source_in_direct_view():
         "TYPE: SHADERS | path: DETECTOR_DET_1 | target: SCENE | action: schedule_emission_shader_from_AIR"
     ]
     
-    for ray_idx in range(batch_size):
-        lane_history = tracer.tracker.history[ray_idx]
-        assert lane_history == expected_sequence
+    assert lane_history == expected_sequence
+    assert output_rays.x[0] == 5.0
 
 
 # =========================================================================
-# TEST 2: Detector ➔ Reflect ➔ Reflect ➔ Reflect ➔ Source
+# TEST PATH GEOMETRY:
+# Detector ➔ R_EXT(M1) ➔ R_EXT(M2) ➔ R_EXT(M3) ➔ Source [Success]
 # =========================================================================
-def test_detector_to_three_consecutive_reflections():
-    """Tests a deep reflection chain hitting three distinct mirrors sequentially."""
+def test_detector_to_three_consecutive_reflections_success():
+    """Tests a reflection chain that successfully ends on a light source.
+    All mirrors should log intersections and schedule reflection shaders."""
     detector = MockNode("DET_1")
     mirror1 = MockNode("MIRROR_1")
     mirror2 = MockNode("MIRROR_2")
     mirror3 = MockNode("MIRROR_3")
     light_source = MockNode("SOURCE_A")
+    
     tracer = TopologicalRayTracer(
         starts=[detector], elements=[mirror1, mirror2, mirror3], ends=[light_source], 
         bounce_count=3, max_transmission_depth=0
     )
     
-    m1_timeline = np.array([[1.0, float('inf'), float('inf')]])
-    m2_timeline = np.array([[float('inf'), 2.0, float('inf')]])
-    m3_timeline = np.array([[float('inf'), float('inf'), 3.0]])
+    # Columns map to: [SOURCE_A, MIRROR_1, MIRROR_2, MIRROR_3]
+    step_0 = np.array([[float('inf'), 1.0,          float('inf'), float('inf')]]) # Hits Mirror 1
+    step_1 = np.array([[float('inf'), float('inf'), 2.0,          float('inf')]]) # Hits Mirror 2
+    step_2 = np.array([[float('inf'), float('inf'), float('inf'), 3.0        ]]) # Hits Mirror 3
+    step_3 = np.array([[4.0,          float('inf'), float('inf'), float('inf')]]) # Finally hits Source A
     
-    output_rays = tracer.raytrace(batch_size=1, MOCK_distances_timeline=[m1_timeline, m2_timeline, m3_timeline])
+    output_rays = tracer.raytrace(
+        batch_size=1, 
+        MOCK_distances_timeline=[step_0, step_1, step_2, step_3]
+    )
     lane_history = tracer.tracker.history[0]
+    # print_debug_output("debug_output.py", lane_history)
     
     expected_sequence = [
         "TYPE: ORIGIN | path: DETECTOR_DET_1 | target: DET_1 | action: init_trace",
-        "TYPE: CONTEXT | path: DETECTOR_DET_1 | target: SOURCE_A | action: query_emission_from_AIR",
-        "TYPE: SHADERS | path: DETECTOR_DET_1 | target: SCENE | action: schedule_emission_shader_from_AIR",
-        "TYPE: INTERSECT | path: DETECTOR_DET_1 | target: MIRROR_1 | action: external_surface_bounce",
-        "TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(MIRROR_1) | target: SOURCE_A | action: query_emission_from_AIR",
-        "TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(MIRROR_1) | target: SCENE | action: schedule_emission_shader_from_AIR",
-        "TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(MIRROR_1) | target: MIRROR_2 | action: external_surface_bounce",
-        "TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(MIRROR_1)➔R_EXT(MIRROR_2) | target: SOURCE_A | action: query_emission_from_AIR",
-        "TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(MIRROR_1)➔R_EXT(MIRROR_2) | target: SCENE | action: schedule_emission_shader_from_AIR",
-        "TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(MIRROR_1)➔R_EXT(MIRROR_2) | target: MIRROR_3 | action: external_surface_bounce",
+        # Step 3: Hits Source A
         "TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(MIRROR_1)➔R_EXT(MIRROR_2)➔R_EXT(MIRROR_3) | target: SOURCE_A | action: query_emission_from_AIR",
         "TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(MIRROR_1)➔R_EXT(MIRROR_2)➔R_EXT(MIRROR_3) | target: SCENE | action: schedule_emission_shader_from_AIR",
-        "TYPE: TERMINATION | path: DETECTOR_DET_1➔R_EXT(MIRROR_1)➔R_EXT(MIRROR_2)➔R_EXT(MIRROR_3) | target: INFINITY | action: ray_escaped_at_step_3",
-        "TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(MIRROR_1)➔R_EXT(MIRROR_2) | target: MIRROR_3 | action: query_direct_illum_from_SOURCE_A",
+        # Unwinding deferred shaders
+        "TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(MIRROR_1)➔R_EXT(MIRROR_2) | target: MIRROR_3 | action: external_surface_bounce",
         "TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(MIRROR_1)➔R_EXT(MIRROR_2) | target: MIRROR_3 | action: schedule_reflection_shader",
-        "TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(MIRROR_1) | target: MIRROR_2 | action: query_direct_illum_from_SOURCE_A",
+        "TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(MIRROR_1) | target: MIRROR_2 | action: external_surface_bounce",
         "TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(MIRROR_1) | target: MIRROR_2 | action: schedule_reflection_shader",
-        "TYPE: CONTEXT | path: DETECTOR_DET_1 | target: MIRROR_1 | action: query_direct_illum_from_SOURCE_A",
+        "TYPE: INTERSECT | path: DETECTOR_DET_1 | target: MIRROR_1 | action: external_surface_bounce",
         "TYPE: SHADERS | path: DETECTOR_DET_1 | target: MIRROR_1 | action: schedule_reflection_shader"
     ]
     
     assert lane_history == expected_sequence
+    assert output_rays.x[0] == 5.0
+
 
 # =========================================================================
-# TEST 3: Detector ➔ Transmit In ➔ Reflect/Transmit Out ➔ Reflect ➔ Source
+# TEST PATH GEOMETRY:
+# Detector ➔ R_EXT(M1) ➔ R_EXT(M2) ➔ R_EXT(M3) ➔ ✖ [Infinity Miss]
 # =========================================================================
-def test_complex_split_transmission_and_reflection_path():
-    """Tests a complex splitting dielectric path verifying simultaneous sub-paths."""
+def test_detector_to_three_consecutive_reflections_miss():
+    """Tests a reflection chain that eventually escapes into empty space.
+    No shaders or surface intersections should be computed or logged."""
     detector = MockNode("DET_1")
-    glass_prism = MockNode("GLASS_PRISM", transparent=True)
-    opaque_mirror = MockNode("OPAQUE_MIRROR")
-    light_source = MockNode("SOURCE_A")
-    tracer = TopologicalRayTracer(
-        starts=[detector], elements=[glass_prism, opaque_mirror], ends=[light_source], 
-        bounce_count=1, max_transmission_depth=2
-    )
-    
-    prism_timeline = np.array([[1.0, 2.0, float('inf')]])
-    mirror_timeline = np.array([[float('inf'), float('inf'), 3.0]])
-    
-    output_rays = tracer.raytrace(batch_size=1, MOCK_distances_timeline=[prism_timeline, mirror_timeline])
-    lane_history = tracer.tracker.history[0]
-    
-    expected_sequence = [
-        "TYPE: ORIGIN | path: DETECTOR_DET_1 | target: DET_1 | action: init_trace",
-        "TYPE: CONTEXT | path: DETECTOR_DET_1 | target: SOURCE_A | action: query_emission_from_AIR",
-        "TYPE: SHADERS | path: DETECTOR_DET_1 | target: SCENE | action: schedule_emission_shader_from_AIR",
-        
-        # --- Transmission Side Branch (Step 0) ---
-        "TYPE: INTERSECT | path: DETECTOR_DET_1 | target: GLASS_PRISM | action: transmit_in_from_AIR",
-        "TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(GLASS_PRISM) | target: SOURCE_A | action: query_emission_from_GLASS_PRISM",
-        "TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_PRISM) | target: SCENE | action: schedule_emission_shader_from_GLASS_PRISM",
-        
-        # Step 1: Transmit Out
-        "TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(GLASS_PRISM) | target: GLASS_PRISM | action: transmit_out_to_AIR",
-        "TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(GLASS_PRISM)➔T_OUT(GLASS_PRISM) | target: SOURCE_A | action: query_emission_from_AIR",
-        "TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_PRISM)➔T_OUT(GLASS_PRISM) | target: SCENE | action: schedule_emission_shader_from_AIR",
-        
-        # Step 2: Hits Opaque Mirror
-        "TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(GLASS_PRISM)➔T_OUT(GLASS_PRISM) | target: OPAQUE_MIRROR | action: external_surface_bounce",
-        "TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(GLASS_PRISM)➔T_OUT(GLASS_PRISM)➔R_EXT(OPAQUE_MIRROR) | target: SOURCE_A | action: query_emission_from_AIR",
-        "TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_PRISM)➔T_OUT(GLASS_PRISM)➔R_EXT(OPAQUE_MIRROR) | target: SCENE | action: schedule_emission_shader_from_AIR",
-        "TYPE: TERMINATION | path: DETECTOR_DET_1➔T_IN(GLASS_PRISM)➔T_OUT(GLASS_PRISM)➔R_EXT(OPAQUE_MIRROR) | target: INFINITY | action: ray_escaped_at_step_3",
-        "TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(GLASS_PRISM)➔T_OUT(GLASS_PRISM) | target: OPAQUE_MIRROR | action: query_direct_illum_from_SOURCE_A",
-        "TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_PRISM)➔T_OUT(GLASS_PRISM) | target: OPAQUE_MIRROR | action: schedule_reflection_shader",
-        "TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_PRISM) | target: GLASS_PRISM | action: schedule_transmission_shader",
-        
-        # Step 1: Internal Reflection Branch
-        "TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(GLASS_PRISM) | target: GLASS_PRISM | action: internal_wall_bounce",
-        "TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(GLASS_PRISM)➔R_INT(GLASS_PRISM) | target: SOURCE_A | action: query_emission_from_GLASS_PRISM",
-        "TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_PRISM)➔R_INT(GLASS_PRISM) | target: SCENE | action: schedule_emission_shader_from_GLASS_PRISM",
-        "TYPE: TERMINATION | path: DETECTOR_DET_1➔T_IN(GLASS_PRISM)➔R_INT(GLASS_PRISM) | target: OPAQUE_MIRROR | action: bounce_budget_exhausted",
-        "TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(GLASS_PRISM) | target: GLASS_PRISM | action: query_direct_illum_from_SOURCE_A",
-        "TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_PRISM) | target: GLASS_PRISM | action: schedule_reflection_shader",
-        "TYPE: SHADERS | path: DETECTOR_DET_1 | target: GLASS_PRISM | action: schedule_transmission_shader",
-        
-        # --- Reflection Side Branch (Step 0) ---
-        "TYPE: INTERSECT | path: DETECTOR_DET_1 | target: GLASS_PRISM | action: external_surface_bounce",
-        "TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(GLASS_PRISM) | target: SOURCE_A | action: query_emission_from_AIR",
-        "TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_PRISM) | target: SCENE | action: schedule_emission_shader_from_AIR",
-        "TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(GLASS_PRISM) | target: GLASS_PRISM | action: transmit_in_from_AIR",
-        "TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(GLASS_PRISM)➔T_IN(GLASS_PRISM) | target: SOURCE_A | action: query_emission_from_GLASS_PRISM",
-        "TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_PRISM)➔T_IN(GLASS_PRISM) | target: SCENE | action: schedule_emission_shader_from_GLASS_PRISM",
-        "TYPE: TERMINATION | path: DETECTOR_DET_1➔R_EXT(GLASS_PRISM)➔T_IN(GLASS_PRISM) | target: OPAQUE_MIRROR | action: bounce_budget_exhausted",
-        "TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_PRISM) | target: GLASS_PRISM | action: schedule_transmission_shader",
-        "TYPE: TERMINATION | path: DETECTOR_DET_1➔R_EXT(GLASS_PRISM) | target: GLASS_PRISM | action: bounce_budget_exhausted",
-        "TYPE: CONTEXT | path: DETECTOR_DET_1 | target: GLASS_PRISM | action: query_direct_illum_from_SOURCE_A",
-        "TYPE: SHADERS | path: DETECTOR_DET_1 | target: GLASS_PRISM | action: schedule_reflection_shader"
-    ]
-    assert lane_history == expected_sequence
-
-
-# =========================================================================
-# TEST 4: Reflection off Passive Element Illuminated by Source
-# =========================================================================
-def test_reflection_off_passive_element_illuminated_by_source():
-    """Tests a strict physical arrangement with zero entity mixing and verified order."""
-    detector = MockNode("DET_1")
-    passive_mirror = MockNode("PASSIVE_MIRROR")  
-    light_source = MockNode("LIGHT_SOURCE_A")                       
-    tracer = TopologicalRayTracer(
-        starts=[detector], elements=[passive_mirror], ends=[light_source], 
-        bounce_count=1, max_transmission_depth=0
-    )
-    
-    mirror_timeline = np.array([[3.0]])
-    output_rays = tracer.raytrace(batch_size=1, MOCK_distances_timeline=[mirror_timeline])
-    lane_history = tracer.tracker.history[0]
-    
-    expected_sequence = [
-        "TYPE: ORIGIN | path: DETECTOR_DET_1 | target: DET_1 | action: init_trace",
-        "TYPE: CONTEXT | path: DETECTOR_DET_1 | target: LIGHT_SOURCE_A | action: query_emission_from_AIR",
-        "TYPE: SHADERS | path: DETECTOR_DET_1 | target: SCENE | action: schedule_emission_shader_from_AIR",
-        "TYPE: INTERSECT | path: DETECTOR_DET_1 | target: PASSIVE_MIRROR | action: external_surface_bounce",
-        "TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(PASSIVE_MIRROR) | target: LIGHT_SOURCE_A | action: query_emission_from_AIR",
-        "TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(PASSIVE_MIRROR) | target: SCENE | action: schedule_emission_shader_from_AIR",
-        "TYPE: TERMINATION | path: DETECTOR_DET_1➔R_EXT(PASSIVE_MIRROR) | target: INFINITY | action: ray_escaped_at_step_1",
-        "TYPE: CONTEXT | path: DETECTOR_DET_1 | target: PASSIVE_MIRROR | action: query_direct_illum_from_LIGHT_SOURCE_A",
-        "TYPE: SHADERS | path: DETECTOR_DET_1 | target: PASSIVE_MIRROR | action: schedule_reflection_shader"
-    ]
-    assert lane_history == expected_sequence
-
-# =========================================================================
-# TEST 5: Strict 1:1 Branch Allocation (No Double Reflections)
-# =========================================================================
-def test_simultaneous_splitting_at_dielectric_boundary():
-    """
-    Tests a ray-splitting scenario at a semi-transparent interface.
-    Asserts the exact timeline structure to guarantee that the ray splits 
-    EXACTLY once into transmission and EXACTLY once into reflection.
-    """
-    detector = MockNode("DET_1")
-    coated_glass = MockNode("COATED_GLASS", transparent=True)
+    mirror1 = MockNode("MIRROR_1")
+    mirror2 = MockNode("MIRROR_2")
+    mirror3 = MockNode("MIRROR_3")
     light_source = MockNode("SOURCE_A")
     
     tracer = TopologicalRayTracer(
-        starts=[detector], elements=[coated_glass], ends=[light_source],
-        bounce_count=1, max_transmission_depth=1
+        starts=[detector], elements=[mirror1, mirror2, mirror3], ends=[light_source], 
+        bounce_count=3, max_transmission_depth=0
     )
     
-    glass_timeline = np.array([[1.0, float('inf')]])
-    timeline_data = [glass_timeline]
+    # Columns map to: [SOURCE_A, MIRROR_1, MIRROR_2, MIRROR_3]
+    step_0 = np.array([[float('inf'), 1.0,         float('inf'), float('inf')]]) # Hits Mirror 1
+    step_1 = np.array([[float('inf'), float('inf'), 2.0,         float('inf')]]) # Hits Mirror 2
+    step_2 = np.array([[float('inf'), float('inf'), float('inf'), 3.0        ]]) # Hits Mirror 3
+    step_3 = np.array([[float('inf'), float('inf'), float('inf'), float('inf')]]) # Escapes to Infinity!
     
-    output_rays = tracer.raytrace(batch_size=1, MOCK_distances_timeline=timeline_data)
-    lane_history = tracer.tracker.history[0]
-
-    expected_sequence = [
-        "TYPE: ORIGIN | path: DETECTOR_DET_1 | target: DET_1 | action: init_trace",
-        "TYPE: CONTEXT | path: DETECTOR_DET_1 | target: SOURCE_A | action: query_emission_from_AIR",
-        "TYPE: SHADERS | path: DETECTOR_DET_1 | target: SCENE | action: schedule_emission_shader_from_AIR",
-        
-        # --- The Single Isolated Transmission Entry ---
-        "TYPE: INTERSECT | path: DETECTOR_DET_1 | target: COATED_GLASS | action: transmit_in_from_AIR",
-        "TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(COATED_GLASS) | target: SOURCE_A | action: query_emission_from_COATED_GLASS",
-        "TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(COATED_GLASS) | target: SCENE | action: schedule_emission_shader_from_COATED_GLASS",
-        "TYPE: TERMINATION | path: DETECTOR_DET_1➔T_IN(COATED_GLASS) | target: INFINITY | action: ray_escaped_at_step_1",
-        "TYPE: SHADERS | path: DETECTOR_DET_1 | target: COATED_GLASS | action: schedule_transmission_shader",
-        
-        # --- The Single Isolated Reflection Entry ---
-        "TYPE: INTERSECT | path: DETECTOR_DET_1 | target: COATED_GLASS | action: external_surface_bounce",
-        "TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(COATED_GLASS) | target: SOURCE_A | action: query_emission_from_AIR",
-        "TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(COATED_GLASS) | target: SCENE | action: schedule_emission_shader_from_AIR",
-        "TYPE: TERMINATION | path: DETECTOR_DET_1➔R_EXT(COATED_GLASS) | target: INFINITY | action: ray_escaped_at_step_1",
-        "TYPE: CONTEXT | path: DETECTOR_DET_1 | target: COATED_GLASS | action: query_direct_illum_from_SOURCE_A",
-        "TYPE: SHADERS | path: DETECTOR_DET_1 | target: COATED_GLASS | action: schedule_reflection_shader"
-    ]
-    
-    assert lane_history == expected_sequence
-
-# =========================================================================
-# TEST 6: Stacked Materials (Contiguous Pure Transmissions)
-# =========================================================================
-def test_contiguous_transmissions_through_lens_stack():
-    """Tests a ray penetrating a series of concentric optical filters."""
-    detector = MockNode("DET_1")
-    lens1 = MockNode("LENS_1", transparent=True)
-    lens2 = MockNode("LENS_2", transparent=True)
-    light_source = MockNode("SOURCE_A")
-    tracer = TopologicalRayTracer(
-        starts=[detector], elements=[lens1, lens2], ends=[light_source], 
-        bounce_count=0, max_transmission_depth=4
+    output_rays = tracer.raytrace(
+        batch_size=1, 
+        MOCK_distances_timeline=[step_0, step_1, step_2, step_3]
     )
-    
-    l1_timeline = np.array([[1.0, float('inf'), float('inf'), 4.0]])
-    l2_timeline = np.array([[float('inf'), 2.0, 3.0, float('inf')]])
-    timeline_data = [l1_timeline, l2_timeline]
-    
-    output_rays = tracer.raytrace(batch_size=1, MOCK_distances_timeline=timeline_data)
     lane_history = tracer.tracker.history[0]
 
     # print_debug_output("debug_output.py", lane_history)
     
     expected_sequence = [
+        "TYPE: ORIGIN | path: DETECTOR_DET_1 | target: DET_1 | action: init_trace",
+        "TYPE: TERMINATION | path: DETECTOR_DET_1➔R_EXT(MIRROR_1)➔R_EXT(MIRROR_2)➔R_EXT(MIRROR_3) | target: INFINITY | action: ray_escaped_at_step_3"
+    ]
+    
+    assert lane_history == expected_sequence
+    assert output_rays.x[0] == 0.0
+
+# =========================================================================
+# TEST PATH GEOMETRY TREE:
+#
+# Detector ➔ GLASS_BLOCK (Front Surface Split)
+#          ├── R_EXT ➔ Source
+#          └── T_IN  ➔ Source
+# =========================================================================
+def test_simultaneous_reflection_and_transmission_at_boundary():
+    """
+    Tests that an active ray striking a transparent element cleanly splits:
+    - Fork 1: Reflects externally and successfully hits the light source.
+    - Fork 2: Transmits into the element and hits the light source from inside.
+    """
+    detector = MockNode("DET_1")
+    glass_block = MockNode("GLASS_BLOCK", transparent=True, refractive_index=1.5)
+    light_source = MockNode("SOURCE_A")
+    
+    # Allow 1 bounce and 1 transmission
+    tracer = TopologicalRayTracer(
+        starts=[detector], elements=[glass_block], ends=[light_source],
+        bounce_count=1, max_transmission_depth=1
+    )
+    
+    # Columns map to: [SOURCE_A, GLASS_BLOCK]
+    # Step 0: Ray strikes the glass surface (distance 1.0)
+    step_0 = np.array([[float('inf'), 1.0]])
+    
+    # Step 1: Both forks propagate out from Step 0.
+    # We construct the mock timeline so that BOTH branches find a light source at Step 1.
+    step_1 = np.array([[2.0, float('inf')]])
+    
+    output_rays = tracer.raytrace(batch_size=1, MOCK_distances_timeline=[step_0, step_1])
+    lane_history = tracer.tracker.history[0]
+    # print_debug_output("debug_output_test_simultaneous_reflection_and_transmission_at_boundary.py", lane_history)
+    
+    expected_sequence = [
+    'TYPE: ORIGIN | path: DETECTOR_DET_1 | target: DET_1 | action: init_trace',
+    'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(GLASS_BLOCK) | target: SOURCE_A | action: query_emission_from_AIR',
+    'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_BLOCK) | target: SCENE | action: schedule_emission_shader_from_AIR',
+
+    # Step 0: Interaction with GLASS_BLOCK
+    'TYPE: INTERSECT | path: DETECTOR_DET_1 | target: GLASS_BLOCK | action: external_surface_bounce',
+    'TYPE: SHADERS | path: DETECTOR_DET_1 | target: GLASS_BLOCK | action: schedule_reflection_shader',
+    'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(GLASS_BLOCK) | target: SOURCE_A | action: query_emission_from_GLASS_BLOCK',
+    'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_BLOCK) | target: SCENE | action: schedule_emission_shader_from_GLASS_BLOCK',
+
+    # Step 1: In through GLASS_BLOCK
+    'TYPE: INTERSECT | path: DETECTOR_DET_1 | target: GLASS_BLOCK | action: transmit_in_from_AIR',
+    'TYPE: SHADERS | path: DETECTOR_DET_1 | target: GLASS_BLOCK | action: schedule_transmission_shader',
+    ]
+
+    assert lane_history == expected_sequence
+
+# =========================================================================
+# TEST PATH GEOMETRY TREE:
+#
+# Detector ➔ GLASS_BLOCK (Front Surface Split)
+#          ├── R_EXT ➔ Source  [Evaluated at Step 1]
+#          └── T_IN  ➔ GLASS_BLOCK (Back Surface Split)
+#                     ├── R_INT ➔ Source  [Internal Bounce]
+#                     └── T_OUT ➔ Source  [Exit to AIR]
+# =========================================================================
+def test_volumetric_slab_internal_and_external_splitting():
+    """
+    Simulates a ray interacting with a glass slab where it splits into T_IN 
+    and R_EXT at the front surface, and the internal T_IN path hits the back 
+    surface to cleanly evaluate internal reflections and exterior transmissions.
+    """
+    detector = MockNode("DET_1")
+    glass_block = MockNode("GLASS_BLOCK", transparent=True, refractive_index=1.5)
+    light_source = MockNode("SOURCE_A")
+    
+    tracer = TopologicalRayTracer(
+        starts=[detector], elements=[glass_block], ends=[light_source],
+        bounce_count=2, max_transmission_depth=2
+    )
+    
+    # Columns map to: [SOURCE_A, GLASS_BLOCK]
+    # Step 0: Ray strikes the front glass block surface
+    step_0 = np.array([[float('inf'), 1.0]])
+    
+    # Step 1: 
+    # - R_EXT branch sees light source at 2.0 (no elements block it)
+    # - T_IN branch encounters the back wall of glass block at 1.0. 
+    #   Light source is at 2.0 (occluded because 2.0 > 1.0)
+    step_1 = np.array([[2.0, 1.0]]) 
+    
+    # Step 2: Children branches look out to finalize connections to the light source
+    step_2 = np.array([[3.0, float('inf')]])
+    
+    output_rays = tracer.raytrace(batch_size=1, MOCK_distances_timeline=[step_0, step_1, step_2])
+    lane_history = tracer.tracker.history
+
+    # print_debug_output("debug_output_test_volumetric_slab_internal_and_external_splitting.py", lane_history)
+
+    expected_sequence = [
+        [
+            'TYPE: ORIGIN | path: DETECTOR_DET_1 | target: DET_1 | action: init_trace',
+            'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(GLASS_BLOCK)➔R_EXT(GLASS_BLOCK) | target: SOURCE_A | action: query_emission_from_AIR',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_BLOCK)➔R_EXT(GLASS_BLOCK) | target: SCENE | action: schedule_emission_shader_from_AIR',
+
+            # Step 0: Interaction with GLASS_BLOCK
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(GLASS_BLOCK) | target: GLASS_BLOCK | action: external_surface_bounce',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_BLOCK) | target: GLASS_BLOCK | action: schedule_reflection_shader',
+            'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(GLASS_BLOCK)➔T_IN(GLASS_BLOCK) | target: SOURCE_A | action: query_emission_from_GLASS_BLOCK',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_BLOCK)➔T_IN(GLASS_BLOCK) | target: SCENE | action: schedule_emission_shader_from_GLASS_BLOCK',
+
+            # Step 1: In through GLASS_BLOCK
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(GLASS_BLOCK) | target: GLASS_BLOCK | action: transmit_in_from_AIR',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_BLOCK) | target: GLASS_BLOCK | action: schedule_transmission_shader',
+
+            # Step 2: Interaction with GLASS_BLOCK
+            'TYPE: INTERSECT | path: DETECTOR_DET_1 | target: GLASS_BLOCK | action: external_surface_bounce',
+            'TYPE: SHADERS | path: DETECTOR_DET_1 | target: GLASS_BLOCK | action: schedule_reflection_shader',
+            'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(GLASS_BLOCK)➔R_INT(GLASS_BLOCK) | target: SOURCE_A | action: query_emission_from_GLASS_BLOCK',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_BLOCK)➔R_INT(GLASS_BLOCK) | target: SCENE | action: schedule_emission_shader_from_GLASS_BLOCK',
+
+            # Step 3: Interaction with GLASS_BLOCK
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(GLASS_BLOCK) | target: GLASS_BLOCK | action: internal_wall_bounce',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_BLOCK) | target: GLASS_BLOCK | action: schedule_reflection_shader',
+            'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(GLASS_BLOCK)➔T_OUT(GLASS_BLOCK) | target: SOURCE_A | action: query_emission_from_AIR',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_BLOCK)➔T_OUT(GLASS_BLOCK) | target: SCENE | action: schedule_emission_shader_from_AIR',
+
+            # Step 4: Out through GLASS_BLOCK
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(GLASS_BLOCK) | target: GLASS_BLOCK | action: transmit_out_to_AIR',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_BLOCK) | target: GLASS_BLOCK | action: schedule_transmission_shader',
+
+            # Step 5: In through GLASS_BLOCK
+            'TYPE: INTERSECT | path: DETECTOR_DET_1 | target: GLASS_BLOCK | action: transmit_in_from_AIR',
+            'TYPE: SHADERS | path: DETECTOR_DET_1 | target: GLASS_BLOCK | action: schedule_transmission_shader',
+        ],
+    ]
+    
+    assert lane_history == expected_sequence
+
+
+# =========================================================================
+# TEST PATH GEOMETRY TREE:
+#
+# Detector ➔ GLASS_BLOCK (Front Surface Split)
+#          ├── R_EXT ➔ ✖ [TERMINATION: bounce_budget_exhausted]
+#          └── T_IN  ➔ Source [SUCCESS]
+# =========================================================================
+def test_splitting_where_one_fork_exhausts_budget():
+    """
+    Tests that if a ray splits at a transparent surface, but one fork
+    exceeds its allowed budget (e.g. bounce count limit) while the other 
+    succeeds, the successful fork's shaders are still scheduled normally 
+    while the failed fork writes a TERMINATION log.
+    """
+    detector = MockNode("DET_1")
+    glass_block = MockNode("GLASS_BLOCK", transparent=True)
+    light_source = MockNode("SOURCE_A")
+    
+    # Set bounce_count to 0, but max_transmission_depth to 1.
+    # This means reflection is immediately blocked by budget, but transmission can proceed!
+    tracer = TopologicalRayTracer(
+        starts=[detector], elements=[glass_block], ends=[light_source],
+        bounce_count=0, max_transmission_depth=1
+    )
+    
+    step_0 = np.array([[float('inf'), 1.0]]) # Hits glass block
+    step_1 = np.array([[2.0, float('inf')]]) # Paths look for light source
+    
+    output_rays = tracer.raytrace(batch_size=1, MOCK_distances_timeline=[step_0, step_1])
+    lane_history = tracer.tracker.history[0]
+    # print_debug_output("debug_output_test_splitting_where_one_fork_exhausts_budget.py", lane_history)
+
+    expected_sequence = [
         'TYPE: ORIGIN | path: DETECTOR_DET_1 | target: DET_1 | action: init_trace',
-        'TYPE: CONTEXT | path: DETECTOR_DET_1 | target: SOURCE_A | action: query_emission_from_AIR',
-        'TYPE: SHADERS | path: DETECTOR_DET_1 | target: SCENE | action: schedule_emission_shader_from_AIR',
+        'TYPE: TERMINATION | path: DETECTOR_DET_1 | target: GLASS_BLOCK | action: bounce_budget_exhausted',
+        'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(GLASS_BLOCK) | target: SOURCE_A | action: query_emission_from_GLASS_BLOCK',
+        'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_BLOCK) | target: SCENE | action: schedule_emission_shader_from_GLASS_BLOCK',
 
-        # Step 0: In through LENS_1
-        'TYPE: INTERSECT | path: DETECTOR_DET_1 | target: LENS_1 | action: transmit_in_from_AIR',
-        'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(LENS_1) | target: SOURCE_A | action: query_emission_from_LENS_1',
-        'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(LENS_1) | target: SCENE | action: schedule_emission_shader_from_LENS_1',
+        # Step 0: In through GLASS_BLOCK
+        'TYPE: INTERSECT | path: DETECTOR_DET_1 | target: GLASS_BLOCK | action: transmit_in_from_AIR',
+        'TYPE: SHADERS | path: DETECTOR_DET_1 | target: GLASS_BLOCK | action: schedule_transmission_shader',
+    ]
 
-        # Step 1: In through LENS_2
-        'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(LENS_1) | target: LENS_2 | action: transmit_in_from_LENS_1',
-        'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(LENS_1)➔T_IN(LENS_2) | target: SOURCE_A | action: query_emission_from_LENS_2',
-        'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(LENS_1)➔T_IN(LENS_2) | target: SCENE | action: schedule_emission_shader_from_LENS_2',
+    assert lane_history == expected_sequence
 
-        # Step 2: Out through LENS_2
-        'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(LENS_1)➔T_IN(LENS_2) | target: LENS_2 | action: transmit_out_to_LENS_1',
-        'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(LENS_1)➔T_IN(LENS_2)➔T_OUT(LENS_2) | target: SOURCE_A | action: query_emission_from_LENS_1',
-        'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(LENS_1)➔T_IN(LENS_2)➔T_OUT(LENS_2) | target: SCENE | action: schedule_emission_shader_from_LENS_1',
+# =========================================================================
+# TEST 7 PATH GEOMETRY TREE:
+#
+# Detector ➔ GLASS_A (Front Face Split)
+#          ├── R_EXT ➔ Source [Success]
+#          └── T_IN  ➔ GLASS_A (Back Face Split)
+#                     ├── R_INT ➔ Source [Success]
+#                     └── T_OUT ➔ GLASS_B (Front Face Split)
+#                                ├── R_EXT ➔ Source [Success]
+#                                └── T_IN  ➔ GLASS_B (Back Face Split)
+#                                           ├── R_INT ➔ Source [Success]
+#                                           └── T_OUT ➔ ✖ [TERMINATION: transmit_budget_exhausted]
+# =========================================================================
+def test_double_slab_multi_transmission_exhaustion():
+    """
+    Tests a continuous multi-slab transmission run that forces budget exhaustion
+    at exactly the 4th transmission boundary interface.
+    """
+    detector = MockNode("DET_1")
+    glass_a = MockNode("GLASS_A", transparent=True)
+    glass_b = MockNode("GLASS_B", transparent=True)
+    light_source = MockNode("SOURCE_A")
+    
+    # Allow plenty of bounces, but hard-limit transmissions to exactly 3
+    tracer = TopologicalRayTracer(
+        starts=[detector], elements=[glass_a, glass_b], ends=[light_source],
+        bounce_count=5, max_transmission_depth=3
+    )
+    
+    # Columns map to: [SOURCE_A, GLASS_A, GLASS_B]
+    step_0 = np.array([[float('inf'), 1.0,         float('inf')]]) # Hits Glass A front
+    step_1 = np.array([[2.0,          1.0,         float('inf')]]) # Hits Glass A back
+    step_2 = np.array([[2.0,          float('inf'), 1.0         ]]) # Hits Glass B front
+    step_3 = np.array([[2.0,          float('inf'), 1.0         ]]) # Hits Glass B back
+    step_4 = np.array([[2.0,          float('inf'), float('inf')]]) # T_OUT tries to exit B
+    
+    output_rays = tracer.raytrace(
+        batch_size=1, 
+        MOCK_distances_timeline=[step_0, step_1, step_2, step_3, step_4]
+    )
+    lane_history = tracer.tracker.history
 
-        # Step 3: Out through LENS_1
-        'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(LENS_1)➔T_IN(LENS_2)➔T_OUT(LENS_2) | target: LENS_1 | action: transmit_out_to_AIR',
-        'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(LENS_1)➔T_IN(LENS_2)➔T_OUT(LENS_2)➔T_OUT(LENS_1) | target: SOURCE_A | action: query_emission_from_AIR',
-        'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(LENS_1)➔T_IN(LENS_2)➔T_OUT(LENS_2)➔T_OUT(LENS_1) | target: SCENE | action: schedule_emission_shader_from_AIR',
-        'TYPE: TERMINATION | path: DETECTOR_DET_1➔T_IN(LENS_1)➔T_IN(LENS_2)➔T_OUT(LENS_2)➔T_OUT(LENS_1) | target: INFINITY | action: ray_escaped_at_step_4',
-        'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(LENS_1)➔T_IN(LENS_2)➔T_OUT(LENS_2) | target: LENS_1 | action: schedule_transmission_shader',
-        'TYPE: TERMINATION | path: DETECTOR_DET_1➔T_IN(LENS_1)➔T_IN(LENS_2)➔T_OUT(LENS_2) | target: LENS_1 | action: bounce_budget_exhausted',
-        'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(LENS_1)➔T_IN(LENS_2) | target: LENS_2 | action: schedule_transmission_shader',
-        'TYPE: TERMINATION | path: DETECTOR_DET_1➔T_IN(LENS_1)➔T_IN(LENS_2) | target: LENS_2 | action: bounce_budget_exhausted',
-        'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(LENS_1) | target: LENS_2 | action: schedule_transmission_shader',
-        'TYPE: TERMINATION | path: DETECTOR_DET_1➔T_IN(LENS_1) | target: LENS_2 | action: bounce_budget_exhausted',
-        'TYPE: SHADERS | path: DETECTOR_DET_1 | target: LENS_1 | action: schedule_transmission_shader',
-        'TYPE: TERMINATION | path: DETECTOR_DET_1 | target: LENS_1 | action: bounce_budget_exhausted',
+    print_debug_output("debug_output1.py", lane_history)
+    
+    expected_sequence = [
+        [
+            'TYPE: ORIGIN | path: DETECTOR_DET_1 | target: DET_1 | action: init_trace',
+            'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔R_EXT(GLASS_A)➔R_EXT(GLASS_B)➔R_EXT(GLASS_B) | target: SOURCE_A | action: query_emission_from_AIR',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔R_EXT(GLASS_A)➔R_EXT(GLASS_B)➔R_EXT(GLASS_B) | target: SCENE | action: schedule_emission_shader_from_AIR',
+
+            # Step 0: Interaction with GLASS_B
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔R_EXT(GLASS_A)➔R_EXT(GLASS_B) | target: GLASS_B | action: external_surface_bounce',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔R_EXT(GLASS_A)➔R_EXT(GLASS_B) | target: GLASS_B | action: schedule_reflection_shader',
+            'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔R_EXT(GLASS_A)➔R_EXT(GLASS_B)➔T_IN(GLASS_B) | target: SOURCE_A | action: query_emission_from_GLASS_B',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔R_EXT(GLASS_A)➔R_EXT(GLASS_B)➔T_IN(GLASS_B) | target: SCENE | action: schedule_emission_shader_from_GLASS_B',
+
+            # Step 1: In through GLASS_B
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔R_EXT(GLASS_A)➔R_EXT(GLASS_B) | target: GLASS_B | action: transmit_in_from_AIR',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔R_EXT(GLASS_A)➔R_EXT(GLASS_B) | target: GLASS_B | action: schedule_transmission_shader',
+
+            # Step 2: Interaction with GLASS_B
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔R_EXT(GLASS_A) | target: GLASS_B | action: external_surface_bounce',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔R_EXT(GLASS_A) | target: GLASS_B | action: schedule_reflection_shader',
+            'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔R_EXT(GLASS_A)➔T_IN(GLASS_B)➔R_INT(GLASS_B) | target: SOURCE_A | action: query_emission_from_GLASS_B',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔R_EXT(GLASS_A)➔T_IN(GLASS_B)➔R_INT(GLASS_B) | target: SCENE | action: schedule_emission_shader_from_GLASS_B',
+
+            # Step 3: Interaction with GLASS_B
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔R_EXT(GLASS_A)➔T_IN(GLASS_B) | target: GLASS_B | action: internal_wall_bounce',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔R_EXT(GLASS_A)➔T_IN(GLASS_B) | target: GLASS_B | action: schedule_reflection_shader',
+            'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔R_EXT(GLASS_A)➔T_IN(GLASS_B)➔T_OUT(GLASS_B) | target: SOURCE_A | action: query_emission_from_AIR',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔R_EXT(GLASS_A)➔T_IN(GLASS_B)➔T_OUT(GLASS_B) | target: SCENE | action: schedule_emission_shader_from_AIR',
+
+            # Step 4: Out through GLASS_B
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔R_EXT(GLASS_A)➔T_IN(GLASS_B) | target: GLASS_B | action: transmit_out_to_AIR',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔R_EXT(GLASS_A)➔T_IN(GLASS_B) | target: GLASS_B | action: schedule_transmission_shader',
+
+            # Step 5: In through GLASS_B
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔R_EXT(GLASS_A) | target: GLASS_B | action: transmit_in_from_AIR',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔R_EXT(GLASS_A) | target: GLASS_B | action: schedule_transmission_shader',
+
+            # Step 6: Interaction with GLASS_A
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(GLASS_A) | target: GLASS_A | action: external_surface_bounce',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_A) | target: GLASS_A | action: schedule_reflection_shader',
+            'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔T_IN(GLASS_A)➔R_EXT(GLASS_B)➔R_EXT(GLASS_B) | target: SOURCE_A | action: query_emission_from_GLASS_A',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔T_IN(GLASS_A)➔R_EXT(GLASS_B)➔R_EXT(GLASS_B) | target: SCENE | action: schedule_emission_shader_from_GLASS_A',
+
+            # Step 7: Interaction with GLASS_B
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔T_IN(GLASS_A)➔R_EXT(GLASS_B) | target: GLASS_B | action: external_surface_bounce',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔T_IN(GLASS_A)➔R_EXT(GLASS_B) | target: GLASS_B | action: schedule_reflection_shader',
+            'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔T_IN(GLASS_A)➔R_EXT(GLASS_B)➔T_IN(GLASS_B) | target: SOURCE_A | action: query_emission_from_GLASS_B',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔T_IN(GLASS_A)➔R_EXT(GLASS_B)➔T_IN(GLASS_B) | target: SCENE | action: schedule_emission_shader_from_GLASS_B',
+
+            # Step 8: In through GLASS_B
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔T_IN(GLASS_A)➔R_EXT(GLASS_B) | target: GLASS_B | action: transmit_in_from_GLASS_A',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔T_IN(GLASS_A)➔R_EXT(GLASS_B) | target: GLASS_B | action: schedule_transmission_shader',
+
+            # Step 9: Interaction with GLASS_B
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔T_IN(GLASS_A) | target: GLASS_B | action: external_surface_bounce',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔T_IN(GLASS_A) | target: GLASS_B | action: schedule_reflection_shader',
+            'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔T_IN(GLASS_A)➔T_IN(GLASS_B)➔R_INT(GLASS_B) | target: SOURCE_A | action: query_emission_from_GLASS_B',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔T_IN(GLASS_A)➔T_IN(GLASS_B)➔R_INT(GLASS_B) | target: SCENE | action: schedule_emission_shader_from_GLASS_B',
+
+            # Step 10: Interaction with GLASS_B
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔T_IN(GLASS_A)➔T_IN(GLASS_B) | target: GLASS_B | action: internal_wall_bounce',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔T_IN(GLASS_A)➔T_IN(GLASS_B) | target: GLASS_B | action: schedule_reflection_shader',
+            'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔T_IN(GLASS_A)➔T_IN(GLASS_B)➔T_OUT(GLASS_B) | target: SOURCE_A | action: query_emission_from_GLASS_A',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔T_IN(GLASS_A)➔T_IN(GLASS_B)➔T_OUT(GLASS_B) | target: SCENE | action: schedule_emission_shader_from_GLASS_A',
+
+            # Step 11: Out through GLASS_B
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔T_IN(GLASS_A)➔T_IN(GLASS_B) | target: GLASS_B | action: transmit_out_to_GLASS_A',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔T_IN(GLASS_A)➔T_IN(GLASS_B) | target: GLASS_B | action: schedule_transmission_shader',
+
+            # Step 12: In through GLASS_B
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔T_IN(GLASS_A) | target: GLASS_B | action: transmit_in_from_GLASS_A',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_A)➔T_IN(GLASS_A) | target: GLASS_B | action: schedule_transmission_shader',
+
+            # Step 13: In through GLASS_A
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(GLASS_A) | target: GLASS_A | action: transmit_in_from_AIR',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS_A) | target: GLASS_A | action: schedule_transmission_shader',
+
+            # Step 14: Interaction with GLASS_A
+            'TYPE: INTERSECT | path: DETECTOR_DET_1 | target: GLASS_A | action: external_surface_bounce',
+            'TYPE: SHADERS | path: DETECTOR_DET_1 | target: GLASS_A | action: schedule_reflection_shader',
+            'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔R_INT(GLASS_A)➔R_EXT(GLASS_B)➔R_EXT(GLASS_B) | target: SOURCE_A | action: query_emission_from_GLASS_A',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔R_INT(GLASS_A)➔R_EXT(GLASS_B)➔R_EXT(GLASS_B) | target: SCENE | action: schedule_emission_shader_from_GLASS_A',
+
+            # Step 15: Interaction with GLASS_B
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔R_INT(GLASS_A)➔R_EXT(GLASS_B) | target: GLASS_B | action: external_surface_bounce',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔R_INT(GLASS_A)➔R_EXT(GLASS_B) | target: GLASS_B | action: schedule_reflection_shader',
+            'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔R_INT(GLASS_A)➔R_EXT(GLASS_B)➔T_IN(GLASS_B) | target: SOURCE_A | action: query_emission_from_GLASS_B',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔R_INT(GLASS_A)➔R_EXT(GLASS_B)➔T_IN(GLASS_B) | target: SCENE | action: schedule_emission_shader_from_GLASS_B',
+
+            # Step 16: In through GLASS_B
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔R_INT(GLASS_A)➔R_EXT(GLASS_B) | target: GLASS_B | action: transmit_in_from_GLASS_A',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔R_INT(GLASS_A)➔R_EXT(GLASS_B) | target: GLASS_B | action: schedule_transmission_shader',
+
+            # Step 17: Interaction with GLASS_B
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔R_INT(GLASS_A) | target: GLASS_B | action: external_surface_bounce',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔R_INT(GLASS_A) | target: GLASS_B | action: schedule_reflection_shader',
+            'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔R_INT(GLASS_A)➔T_IN(GLASS_B)➔R_INT(GLASS_B) | target: SOURCE_A | action: query_emission_from_GLASS_B',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔R_INT(GLASS_A)➔T_IN(GLASS_B)➔R_INT(GLASS_B) | target: SCENE | action: schedule_emission_shader_from_GLASS_B',
+
+            # Step 18: Interaction with GLASS_B
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔R_INT(GLASS_A)➔T_IN(GLASS_B) | target: GLASS_B | action: internal_wall_bounce',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔R_INT(GLASS_A)➔T_IN(GLASS_B) | target: GLASS_B | action: schedule_reflection_shader',
+            'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔R_INT(GLASS_A)➔T_IN(GLASS_B)➔T_OUT(GLASS_B) | target: SOURCE_A | action: query_emission_from_GLASS_A',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔R_INT(GLASS_A)➔T_IN(GLASS_B)➔T_OUT(GLASS_B) | target: SCENE | action: schedule_emission_shader_from_GLASS_A',
+
+            # Step 19: Out through GLASS_B
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔R_INT(GLASS_A)➔T_IN(GLASS_B) | target: GLASS_B | action: transmit_out_to_GLASS_A',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔R_INT(GLASS_A)➔T_IN(GLASS_B) | target: GLASS_B | action: schedule_transmission_shader',
+
+            # Step 20: In through GLASS_B
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔R_INT(GLASS_A) | target: GLASS_B | action: transmit_in_from_GLASS_A',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔R_INT(GLASS_A) | target: GLASS_B | action: schedule_transmission_shader',
+
+            # Step 21: Interaction with GLASS_A
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(GLASS_A) | target: GLASS_A | action: internal_wall_bounce',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_A) | target: GLASS_A | action: schedule_reflection_shader',
+            'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔T_OUT(GLASS_A)➔R_EXT(GLASS_B)➔R_EXT(GLASS_B) | target: SOURCE_A | action: query_emission_from_AIR',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔T_OUT(GLASS_A)➔R_EXT(GLASS_B)➔R_EXT(GLASS_B) | target: SCENE | action: schedule_emission_shader_from_AIR',
+
+            # Step 22: Interaction with GLASS_B
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔T_OUT(GLASS_A)➔R_EXT(GLASS_B) | target: GLASS_B | action: external_surface_bounce',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔T_OUT(GLASS_A)➔R_EXT(GLASS_B) | target: GLASS_B | action: schedule_reflection_shader',
+            'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔T_OUT(GLASS_A)➔R_EXT(GLASS_B)➔T_IN(GLASS_B) | target: SOURCE_A | action: query_emission_from_GLASS_B',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔T_OUT(GLASS_A)➔R_EXT(GLASS_B)➔T_IN(GLASS_B) | target: SCENE | action: schedule_emission_shader_from_GLASS_B',
+
+            # Step 23: In through GLASS_B
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔T_OUT(GLASS_A)➔R_EXT(GLASS_B) | target: GLASS_B | action: transmit_in_from_AIR',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔T_OUT(GLASS_A)➔R_EXT(GLASS_B) | target: GLASS_B | action: schedule_transmission_shader',
+
+            # Step 24: Interaction with GLASS_B
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔T_OUT(GLASS_A) | target: GLASS_B | action: external_surface_bounce',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔T_OUT(GLASS_A) | target: GLASS_B | action: schedule_reflection_shader',
+            'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔T_OUT(GLASS_A)➔T_IN(GLASS_B)➔R_INT(GLASS_B) | target: SOURCE_A | action: query_emission_from_GLASS_B',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔T_OUT(GLASS_A)➔T_IN(GLASS_B)➔R_INT(GLASS_B) | target: SCENE | action: schedule_emission_shader_from_GLASS_B',
+
+            # Step 25: Interaction with GLASS_B
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔T_OUT(GLASS_A)➔T_IN(GLASS_B) | target: GLASS_B | action: internal_wall_bounce',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔T_OUT(GLASS_A)➔T_IN(GLASS_B) | target: GLASS_B | action: schedule_reflection_shader',
+            'TYPE: TERMINATION | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔T_OUT(GLASS_A)➔T_IN(GLASS_B) | target: GLASS_B | action: transmit_budget_exhausted',
+
+            # Step 26: In through GLASS_B
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔T_OUT(GLASS_A) | target: GLASS_B | action: transmit_in_from_AIR',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_A)➔T_OUT(GLASS_A) | target: GLASS_B | action: schedule_transmission_shader',
+
+            # Step 27: Out through GLASS_A
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(GLASS_A) | target: GLASS_A | action: transmit_out_to_AIR',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS_A) | target: GLASS_A | action: schedule_transmission_shader',
+
+            # Step 28: In through GLASS_A
+            'TYPE: INTERSECT | path: DETECTOR_DET_1 | target: GLASS_A | action: transmit_in_from_AIR',
+            'TYPE: SHADERS | path: DETECTOR_DET_1 | target: GLASS_A | action: schedule_transmission_shader',
+        ],
     ]
 
 
     assert lane_history == expected_sequence
 
 
-import numpy as np
-import pytest
-
 # =========================================================================
-# TEST 7: Peculiar Sequence (Complete 1:1 Exhaustive Match Profile)
+# TEST 8 PATH GEOMETRY TREE:
+#
+# Detector ➔ MIRROR_1
+#          └── R_EXT ➔ MIRROR_2
+#                     └── R_EXT ➔ MIRROR_1
+#                                └── R_EXT ➔ MIRROR_2
+#                                           └── R_EXT ➔ ✖ [TERMINATION: bounce_budget_exhausted]
 # =========================================================================
-def test_peculiar_interleaved_path_behavior():
-    """Tests an interleaved external/internal boundary trajectory loop with absolute structural certainty."""
+def test_inter_element_mirror_cave_bounce_exhaustion():
+    """
+    Tests that a ray trapped bouncing infinitely between two mirrors is 
+    cleanly truncated the exact moment it hits the maximum allowed bounce threshold.
+    """
     detector = MockNode("DET_1")
-    element_x = MockNode("ELEMENT_X", transparent=True)
+    mirror_1 = MockNode("MIRROR_1")
+    mirror_2 = MockNode("MIRROR_2")
     light_source = MockNode("SOURCE_A")
+    
+    # Clamp bounce count to 3
     tracer = TopologicalRayTracer(
-        starts=[detector], elements=[element_x], ends=[light_source], 
-        bounce_count=2, max_transmission_depth=2
+        starts=[detector], elements=[mirror_1, mirror_2], ends=[light_source],
+        bounce_count=3, max_transmission_depth=0
     )
     
-    x_timeline = np.array([[1.0, 2.0, 3.0, 4.0]])
-    timeline_data = [x_timeline]
+    # Columns map to: [SOURCE_A, MIRROR_1, MIRROR_2]
+    step_0 = np.array([[float('inf'), 1.0,         float('inf')]]) # Hits Mirror 1 (Bounce 1)
+    step_1 = np.array([[float('inf'), float('inf'), 1.0         ]]) # Hits Mirror 2 (Bounce 2)
+    step_2 = np.array([[float('inf'), 1.0,         float('inf')]]) # Hits Mirror 1 (Bounce 3)
+    step_3 = np.array([[float('inf'), float('inf'), 1.0         ]]) # Hits Mirror 2 (Bounce 4 -> Exhausted!)
     
-    output_rays = tracer.raytrace(batch_size=1, MOCK_distances_timeline=timeline_data)
+    output_rays = tracer.raytrace(
+        batch_size=1, 
+        MOCK_distances_timeline=[step_0, step_1, step_2, step_3]
+    )
+    lane_history = tracer.tracker.history
+
+    print_debug_output("debug_output.py", lane_history)
+
+    expected_sequence = [
+        [
+            'TYPE: ORIGIN | path: DETECTOR_DET_1 | target: DET_1 | action: init_trace',
+            'TYPE: TERMINATION | path: DETECTOR_DET_1➔R_EXT(MIRROR_1)➔R_EXT(MIRROR_2)➔R_EXT(MIRROR_1) | target: MIRROR_2 | action: bounce_budget_exhausted',
+        ],
+    ]
+
+    assert lane_history == expected_sequence
+
+# =========================================================================
+# TEST 9 PATH GEOMETRY TREE:
+#
+# Detector ➔ LIGHT_GUIDE (Front Face Split)
+#          ├── R_EXT ➔ Source [Success]
+#          └── T_IN  ➔ LIGHT_GUIDE (Internal Boundary Wall 1)
+#                     ├── T_OUT ➔ Source [Success]
+#                     └── R_INT ➔ LIGHT_GUIDE (Internal Boundary Wall 2)
+#                                ├── T_OUT ➔ Source [Success]
+#                                └── R_INT ➔ ✖ [TERMINATION: bounce_budget_exhausted]
+# =========================================================================
+def test_light_guide_internal_reflection_exhaustion():
+    """
+    Simulates a ray trapped inside a dense translucent medium block, testing 
+    that consecutive internal reflections (R_INT) increment the bounce budget 
+    and terminate cleanly when exhausted.
+    """
+    detector = MockNode("DET_1")
+    light_guide = MockNode("LIGHT_GUIDE", transparent=True)
+    light_source = MockNode("SOURCE_A")
+    
+    # Cap bounces at 2
+    tracer = TopologicalRayTracer(
+        starts=[detector], elements=[light_guide], ends=[light_source],
+        bounce_count=2, max_transmission_depth=5
+    )
+    
+    # Columns map to: [SOURCE_A, LIGHT_GUIDE]
+    step_0 = np.array([[float('inf'), 1.0]]) # Hits front face (T_IN, bounce=0)
+    step_1 = np.array([[5.0,          1.0]]) # Hits wall 1 (R_INT, bounce=1)
+    step_2 = np.array([[5.0,          1.0]]) # Hits wall 2 (R_INT, bounce=2)
+    step_3 = np.array([[5.0,          1.0]]) # Hits wall 3 (R_INT, bounce=3 -> Exhausted!)
+    
+    output_rays = tracer.raytrace(
+        batch_size=1, 
+        MOCK_distances_timeline=[step_0, step_1, step_2, step_3]
+    )
     lane_history = tracer.tracker.history
 
     # print_debug_output("debug_output.py", lane_history)
@@ -362,237 +652,142 @@ def test_peculiar_interleaved_path_behavior():
     expected_sequence = [
         [
             'TYPE: ORIGIN | path: DETECTOR_DET_1 | target: DET_1 | action: init_trace',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1 | target: SOURCE_A | action: query_emission_from_AIR',
-            'TYPE: SHADERS | path: DETECTOR_DET_1 | target: SCENE | action: schedule_emission_shader_from_AIR',
-
-            # Step 0: In through ELEMENT_X
-            'TYPE: INTERSECT | path: DETECTOR_DET_1 | target: ELEMENT_X | action: transmit_in_from_AIR',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(ELEMENT_X) | target: SOURCE_A | action: query_emission_from_ELEMENT_X',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(ELEMENT_X) | target: SCENE | action: schedule_emission_shader_from_ELEMENT_X',
-
-            # Step 1: Out through ELEMENT_X
-            'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(ELEMENT_X) | target: ELEMENT_X | action: transmit_out_to_AIR',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔T_OUT(ELEMENT_X) | target: SOURCE_A | action: query_emission_from_AIR',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔T_OUT(ELEMENT_X) | target: SCENE | action: schedule_emission_shader_from_AIR',
-            'TYPE: TERMINATION | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔T_OUT(ELEMENT_X) | target: ELEMENT_X | action: transmit_budget_exhausted',
-
-            # Step 2: Interaction with ELEMENT_X
-            'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔T_OUT(ELEMENT_X) | target: ELEMENT_X | action: external_surface_bounce',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔T_OUT(ELEMENT_X)➔R_EXT(ELEMENT_X) | target: SOURCE_A | action: query_emission_from_AIR',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔T_OUT(ELEMENT_X)➔R_EXT(ELEMENT_X) | target: SCENE | action: schedule_emission_shader_from_AIR',
-            'TYPE: TERMINATION | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔T_OUT(ELEMENT_X)➔R_EXT(ELEMENT_X) | target: ELEMENT_X | action: transmit_budget_exhausted',
-
-            # Step 3: Interaction with ELEMENT_X
-            'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔T_OUT(ELEMENT_X)➔R_EXT(ELEMENT_X) | target: ELEMENT_X | action: external_surface_bounce',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔T_OUT(ELEMENT_X)➔R_EXT(ELEMENT_X)➔R_EXT(ELEMENT_X) | target: SOURCE_A | action: query_emission_from_AIR',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔T_OUT(ELEMENT_X)➔R_EXT(ELEMENT_X)➔R_EXT(ELEMENT_X) | target: SCENE | action: schedule_emission_shader_from_AIR',
-            'TYPE: TERMINATION | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔T_OUT(ELEMENT_X)➔R_EXT(ELEMENT_X)➔R_EXT(ELEMENT_X) | target: INFINITY | action: ray_escaped_at_step_4',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔T_OUT(ELEMENT_X)➔R_EXT(ELEMENT_X) | target: ELEMENT_X | action: query_direct_illum_from_SOURCE_A',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔T_OUT(ELEMENT_X)➔R_EXT(ELEMENT_X) | target: ELEMENT_X | action: schedule_reflection_shader',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔T_OUT(ELEMENT_X) | target: ELEMENT_X | action: query_direct_illum_from_SOURCE_A',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔T_OUT(ELEMENT_X) | target: ELEMENT_X | action: schedule_reflection_shader',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(ELEMENT_X) | target: ELEMENT_X | action: schedule_transmission_shader',
-
-            # Step 4: Interaction with ELEMENT_X
-            'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(ELEMENT_X) | target: ELEMENT_X | action: internal_wall_bounce',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X) | target: SOURCE_A | action: query_emission_from_ELEMENT_X',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X) | target: SCENE | action: schedule_emission_shader_from_ELEMENT_X',
-
-            # Step 5: Out through ELEMENT_X
-            'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X) | target: ELEMENT_X | action: transmit_out_to_AIR',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X)➔T_OUT(ELEMENT_X) | target: SOURCE_A | action: query_emission_from_AIR',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X)➔T_OUT(ELEMENT_X) | target: SCENE | action: schedule_emission_shader_from_AIR',
-            'TYPE: TERMINATION | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X)➔T_OUT(ELEMENT_X) | target: ELEMENT_X | action: transmit_budget_exhausted',
-
-            # Step 6: Interaction with ELEMENT_X
-            'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X)➔T_OUT(ELEMENT_X) | target: ELEMENT_X | action: external_surface_bounce',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X)➔T_OUT(ELEMENT_X)➔R_EXT(ELEMENT_X) | target: SOURCE_A | action: query_emission_from_AIR',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X)➔T_OUT(ELEMENT_X)➔R_EXT(ELEMENT_X) | target: SCENE | action: schedule_emission_shader_from_AIR',
-            'TYPE: TERMINATION | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X)➔T_OUT(ELEMENT_X)➔R_EXT(ELEMENT_X) | target: INFINITY | action: ray_escaped_at_step_4',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X)➔T_OUT(ELEMENT_X) | target: ELEMENT_X | action: query_direct_illum_from_SOURCE_A',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X)➔T_OUT(ELEMENT_X) | target: ELEMENT_X | action: schedule_reflection_shader',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X) | target: ELEMENT_X | action: schedule_transmission_shader',
-
-            # Step 7: Interaction with ELEMENT_X
-            'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X) | target: ELEMENT_X | action: internal_wall_bounce',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X)➔R_INT(ELEMENT_X) | target: SOURCE_A | action: query_emission_from_ELEMENT_X',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X)➔R_INT(ELEMENT_X) | target: SCENE | action: schedule_emission_shader_from_ELEMENT_X',
-
-            # Step 8: Out through ELEMENT_X
-            'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X)➔R_INT(ELEMENT_X) | target: ELEMENT_X | action: transmit_out_to_AIR',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X)➔R_INT(ELEMENT_X)➔T_OUT(ELEMENT_X) | target: SOURCE_A | action: query_emission_from_AIR',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X)➔R_INT(ELEMENT_X)➔T_OUT(ELEMENT_X) | target: SCENE | action: schedule_emission_shader_from_AIR',
-            'TYPE: TERMINATION | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X)➔R_INT(ELEMENT_X)➔T_OUT(ELEMENT_X) | target: INFINITY | action: ray_escaped_at_step_4',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X)➔R_INT(ELEMENT_X) | target: ELEMENT_X | action: schedule_transmission_shader',
-            'TYPE: TERMINATION | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X)➔R_INT(ELEMENT_X) | target: ELEMENT_X | action: bounce_budget_exhausted',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X) | target: ELEMENT_X | action: query_direct_illum_from_SOURCE_A',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X) | target: ELEMENT_X | action: schedule_reflection_shader',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(ELEMENT_X) | target: ELEMENT_X | action: query_direct_illum_from_SOURCE_A',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(ELEMENT_X) | target: ELEMENT_X | action: schedule_reflection_shader',
-            'TYPE: SHADERS | path: DETECTOR_DET_1 | target: ELEMENT_X | action: schedule_transmission_shader',
-
-            # Step 9: Interaction with ELEMENT_X
-            'TYPE: INTERSECT | path: DETECTOR_DET_1 | target: ELEMENT_X | action: external_surface_bounce',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X) | target: SOURCE_A | action: query_emission_from_AIR',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X) | target: SCENE | action: schedule_emission_shader_from_AIR',
-
-            # Step 10: In through ELEMENT_X
-            'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X) | target: ELEMENT_X | action: transmit_in_from_AIR',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X) | target: SOURCE_A | action: query_emission_from_ELEMENT_X',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X) | target: SCENE | action: schedule_emission_shader_from_ELEMENT_X',
-
-            # Step 11: Out through ELEMENT_X
-            'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X) | target: ELEMENT_X | action: transmit_out_to_AIR',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X)➔T_OUT(ELEMENT_X) | target: SOURCE_A | action: query_emission_from_AIR',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X)➔T_OUT(ELEMENT_X) | target: SCENE | action: schedule_emission_shader_from_AIR',
-            'TYPE: TERMINATION | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X)➔T_OUT(ELEMENT_X) | target: ELEMENT_X | action: transmit_budget_exhausted',
-
-            # Step 12: Interaction with ELEMENT_X
-            'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X)➔T_OUT(ELEMENT_X) | target: ELEMENT_X | action: external_surface_bounce',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X)➔T_OUT(ELEMENT_X)➔R_EXT(ELEMENT_X) | target: SOURCE_A | action: query_emission_from_AIR',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X)➔T_OUT(ELEMENT_X)➔R_EXT(ELEMENT_X) | target: SCENE | action: schedule_emission_shader_from_AIR',
-            'TYPE: TERMINATION | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X)➔T_OUT(ELEMENT_X)➔R_EXT(ELEMENT_X) | target: INFINITY | action: ray_escaped_at_step_4',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X)➔T_OUT(ELEMENT_X) | target: ELEMENT_X | action: query_direct_illum_from_SOURCE_A',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X)➔T_OUT(ELEMENT_X) | target: ELEMENT_X | action: schedule_reflection_shader',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X) | target: ELEMENT_X | action: schedule_transmission_shader',
-
-            # Step 13: Interaction with ELEMENT_X
-            'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X) | target: ELEMENT_X | action: internal_wall_bounce',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X) | target: SOURCE_A | action: query_emission_from_ELEMENT_X',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X) | target: SCENE | action: schedule_emission_shader_from_ELEMENT_X',
-
-            # Step 14: Out through ELEMENT_X
-            'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X) | target: ELEMENT_X | action: transmit_out_to_AIR',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X)➔T_OUT(ELEMENT_X) | target: SOURCE_A | action: query_emission_from_AIR',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X)➔T_OUT(ELEMENT_X) | target: SCENE | action: schedule_emission_shader_from_AIR',
-            'TYPE: TERMINATION | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X)➔T_OUT(ELEMENT_X) | target: INFINITY | action: ray_escaped_at_step_4',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X) | target: ELEMENT_X | action: schedule_transmission_shader',
-            'TYPE: TERMINATION | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X)➔R_INT(ELEMENT_X) | target: ELEMENT_X | action: bounce_budget_exhausted',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X) | target: ELEMENT_X | action: query_direct_illum_from_SOURCE_A',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X) | target: ELEMENT_X | action: schedule_reflection_shader',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X) | target: ELEMENT_X | action: schedule_transmission_shader',
-
-            # Step 15: Interaction with ELEMENT_X
-            'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X) | target: ELEMENT_X | action: external_surface_bounce',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔R_EXT(ELEMENT_X) | target: SOURCE_A | action: query_emission_from_AIR',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔R_EXT(ELEMENT_X) | target: SCENE | action: schedule_emission_shader_from_AIR',
-
-            # Step 16: In through ELEMENT_X
-            'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔R_EXT(ELEMENT_X) | target: ELEMENT_X | action: transmit_in_from_AIR',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X) | target: SOURCE_A | action: query_emission_from_ELEMENT_X',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X) | target: SCENE | action: schedule_emission_shader_from_ELEMENT_X',
-
-            # Step 17: Out through ELEMENT_X
-            'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X) | target: ELEMENT_X | action: transmit_out_to_AIR',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X)➔T_OUT(ELEMENT_X) | target: SOURCE_A | action: query_emission_from_AIR',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X)➔T_OUT(ELEMENT_X) | target: SCENE | action: schedule_emission_shader_from_AIR',
-            'TYPE: TERMINATION | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X)➔T_OUT(ELEMENT_X) | target: INFINITY | action: ray_escaped_at_step_4',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X) | target: ELEMENT_X | action: schedule_transmission_shader',
-            'TYPE: TERMINATION | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔R_EXT(ELEMENT_X)➔T_IN(ELEMENT_X) | target: ELEMENT_X | action: bounce_budget_exhausted',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔R_EXT(ELEMENT_X) | target: ELEMENT_X | action: schedule_transmission_shader',
-            'TYPE: TERMINATION | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X)➔R_EXT(ELEMENT_X) | target: ELEMENT_X | action: bounce_budget_exhausted',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X) | target: ELEMENT_X | action: query_direct_illum_from_SOURCE_A',
-            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(ELEMENT_X) | target: ELEMENT_X | action: schedule_reflection_shader',
-            'TYPE: CONTEXT | path: DETECTOR_DET_1 | target: ELEMENT_X | action: query_direct_illum_from_SOURCE_A',
-            'TYPE: SHADERS | path: DETECTOR_DET_1 | target: ELEMENT_X | action: schedule_reflection_shader',
+            'TYPE: TERMINATION | path: DETECTOR_DET_1➔R_EXT(LIGHT_GUIDE)➔R_EXT(LIGHT_GUIDE) | target: LIGHT_GUIDE | action: bounce_budget_exhausted',
+            'TYPE: TERMINATION | path: DETECTOR_DET_1➔R_EXT(LIGHT_GUIDE)➔R_EXT(LIGHT_GUIDE)➔T_IN(LIGHT_GUIDE) | target: LIGHT_GUIDE | action: bounce_budget_exhausted',
+            'TYPE: TERMINATION | path: DETECTOR_DET_1➔R_EXT(LIGHT_GUIDE)➔T_IN(LIGHT_GUIDE)➔R_INT(LIGHT_GUIDE) | target: LIGHT_GUIDE | action: bounce_budget_exhausted',
+            'TYPE: TERMINATION | path: DETECTOR_DET_1➔T_IN(LIGHT_GUIDE)➔R_INT(LIGHT_GUIDE)➔R_INT(LIGHT_GUIDE) | target: LIGHT_GUIDE | action: bounce_budget_exhausted',
         ],
     ]
 
     assert lane_history == expected_sequence
 
-# =========================================================================
-# TEST 8: Strict Budget Termination Profile
-# =========================================================================
-def test_subsurface_infinite_reflection_budget_exhaustion():
+# ====================================================================================
+# BATCH SIMULATION SCENE GRAPH:
+#
+# DETECTOR_DET_1 (Camera 1) ➔ Processes Batch Lanes [0, 1]
+# │  ├── Lane 0 ➔ Strikes GLASS_BLOCK front face, splits into:
+# │  │     ├── R_EXT ➔ Strikes SOURCE_A [Success]
+# │  │     └── T_IN  ➔ Penetrates volume, exits back face ➔ Strikes SOURCE_B [Success]
+# │  └── Lane 1 ➔ Misses everything entirely ➔ Escapes to INFINITY [Dark Pixel]
+# │
+# DETECTOR_DET_2 (Camera 2) ➔ Processes Batch Lanes [0, 1]
+#    ├── Lane 0 ➔ Points straight at MIRROR_1 ➔ R_EXT ➔ Strikes SOURCE_A [Success]
+#    └── Lane 1 ➔ Points directly into empty space ➔ Escapes to INFINITY [Dark Pixel]
+# ====================================================================================
+def test_multi_detector_multi_source_vectorized_batch():
     """
-    Validates that a trapped ray terminates exactly when its budget depletes.
-    Guarantees that no hanging recursive states or phantom evaluations execute 
-    after the termination limits are declared.
+    Validates a complex environment utilizing multiple detectors, multiple light sources, 
+    and elements simultaneously across a parallel batch execution tracking framework.
     """
-    detector = MockNode("DET_1")
-    trapping_core = MockNode("TRAPPING_CORE", transparent=True)
-    light_source = MockNode("SOURCE_A")
+    # 1. Define Entities
+    det1 = MockNode("DET_1")
+    det2 = MockNode("DET_2")
     
+    glass = MockNode("GLASS", transparent=True)
+    mirror = MockNode("MIRROR")
+    
+    src_a = MockNode("SOURCE_A")
+    src_b = MockNode("SOURCE_B")
+    
+    # Instantiate tracer configuration
+    # Layout order for distance columns: [SOURCE_A, SOURCE_B, GLASS, MIRROR]
     tracer = TopologicalRayTracer(
-        starts=[detector], elements=[trapping_core], ends=[light_source],
-        bounce_count=2, max_transmission_depth=1
+        starts=[det1, det2], 
+        elements=[glass, mirror], 
+        ends=[src_a, src_b],
+        bounce_count=1, 
+        max_transmission_depth=1
     )
     
-    core_timeline = np.array([[1.0, 2.0, 3.0, 4.0, 5.0]])
-    timeline_data = [core_timeline]
+    batch_size = 2
     
-    output_rays = tracer.raytrace(batch_size=1, MOCK_distances_timeline=timeline_data)
-    lane_history = tracer.tracker.history[0]
+    # 2. Construct Mock Distance Timeline Matrices
+    # Step 0 Matrix Layout: [SOURCE_A, SOURCE_B, GLASS, MIRROR]
+    step_0 = np.array([
+        [float('inf'), float('inf'), 1.0,         float('inf')], # Lane 0: Points at Glass front face
+        [float('inf'), float('inf'), float('inf'), float('inf')]  # Lane 1: Escapes to infinity immediately
+    ])
+    
+    # Step 1: Evaluating the resulting secondary branches spawned from Step 0
+    # - The R_EXT branch from Lane 0 looks out and hits SOURCE_A at distance 2.0
+    # - The T_IN branch from Lane 0 hits the back face of the GLASS block at distance 1.0
+    step_1 = np.array([
+        [2.0,          float('inf'), 1.0,         float('inf')], # Lane 0 processing
+        [float('inf'), float('inf'), float('inf'), float('inf')]  # Lane 1 dead space
+    ])
+    
+    # Step 2: Evaluating deep boundary exits
+    # - The T_OUT branch exiting the back of the glass strikes SOURCE_B at distance 3.0
+    # - Concurrently, Camera 2 (DET_2) uses this step index mapping to bounce off the MIRROR
+    step_2 = np.array([
+        [float('inf'), 3.0,          float('inf'), float('inf')], # Lane 0 hits Source B
+        [2.0,          float('inf'), float('inf'), 1.0         ]  # Lane 1 hits Mirror, bounces to Source A
+    ])
+    
+    # Compile the timelines
+    timeline = [step_0, step_1, step_2]
+    
+    # 3. Execute Vectorized Frame Trace
+    output_rays = tracer.raytrace(batch_size=batch_size, MOCK_distances_timeline=timeline)
 
+    lane_history = tracer.tracker.history
     # print_debug_output("debug_output.py", lane_history)
     
     expected_sequence = [
-        'TYPE: ORIGIN | path: DETECTOR_DET_1 | target: DET_1 | action: init_trace',
-        'TYPE: CONTEXT | path: DETECTOR_DET_1 | target: SOURCE_A | action: query_emission_from_AIR',
-        'TYPE: SHADERS | path: DETECTOR_DET_1 | target: SCENE | action: schedule_emission_shader_from_AIR',
+        [
+            'TYPE: ORIGIN | path: DETECTOR_DET_1 | target: DET_1 | action: init_trace',
+            'TYPE: TERMINATION | path: DETECTOR_DET_1➔R_EXT(GLASS) | target: GLASS | action: bounce_budget_exhausted',
+            'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(GLASS)➔T_IN(GLASS) | target: SOURCE_B | action: query_emission_from_GLASS',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS)➔T_IN(GLASS) | target: SCENE | action: schedule_emission_shader_from_GLASS',
 
-        # Step 0: In through TRAPPING_CORE
-        'TYPE: INTERSECT | path: DETECTOR_DET_1 | target: TRAPPING_CORE | action: transmit_in_from_AIR',
-        'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(TRAPPING_CORE) | target: SOURCE_A | action: query_emission_from_TRAPPING_CORE',
-        'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(TRAPPING_CORE) | target: SCENE | action: schedule_emission_shader_from_TRAPPING_CORE',
-        'TYPE: TERMINATION | path: DETECTOR_DET_1➔T_IN(TRAPPING_CORE) | target: TRAPPING_CORE | action: transmit_budget_exhausted',
+            # Step 0: In through GLASS
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(GLASS) | target: GLASS | action: transmit_in_from_AIR',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(GLASS) | target: GLASS | action: schedule_transmission_shader',
 
-        # Step 1: Interaction with TRAPPING_CORE
-        'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(TRAPPING_CORE) | target: TRAPPING_CORE | action: internal_wall_bounce',
-        'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(TRAPPING_CORE)➔R_INT(TRAPPING_CORE) | target: SOURCE_A | action: query_emission_from_TRAPPING_CORE',
-        'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(TRAPPING_CORE)➔R_INT(TRAPPING_CORE) | target: SCENE | action: schedule_emission_shader_from_TRAPPING_CORE',
-        'TYPE: TERMINATION | path: DETECTOR_DET_1➔T_IN(TRAPPING_CORE)➔R_INT(TRAPPING_CORE) | target: TRAPPING_CORE | action: transmit_budget_exhausted',
+            # Step 1: Interaction with GLASS
+            'TYPE: INTERSECT | path: DETECTOR_DET_1 | target: GLASS | action: external_surface_bounce',
+            'TYPE: SHADERS | path: DETECTOR_DET_1 | target: GLASS | action: schedule_reflection_shader',
+            'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(GLASS)➔R_INT(GLASS) | target: SOURCE_B | action: query_emission_from_GLASS',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS)➔R_INT(GLASS) | target: SCENE | action: schedule_emission_shader_from_GLASS',
 
-        # Step 2: Interaction with TRAPPING_CORE
-        'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(TRAPPING_CORE)➔R_INT(TRAPPING_CORE) | target: TRAPPING_CORE | action: internal_wall_bounce',
-        'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(TRAPPING_CORE)➔R_INT(TRAPPING_CORE)➔R_INT(TRAPPING_CORE) | target: SOURCE_A | action: query_emission_from_TRAPPING_CORE',
-        'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(TRAPPING_CORE)➔R_INT(TRAPPING_CORE)➔R_INT(TRAPPING_CORE) | target: SCENE | action: schedule_emission_shader_from_TRAPPING_CORE',
-        'TYPE: TERMINATION | path: DETECTOR_DET_1➔T_IN(TRAPPING_CORE)➔R_INT(TRAPPING_CORE)➔R_INT(TRAPPING_CORE) | target: TRAPPING_CORE | action: transmit_budget_exhausted',
-        'TYPE: TERMINATION | path: DETECTOR_DET_1➔T_IN(TRAPPING_CORE)➔R_INT(TRAPPING_CORE)➔R_INT(TRAPPING_CORE) | target: TRAPPING_CORE | action: bounce_budget_exhausted',
-        'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(TRAPPING_CORE)➔R_INT(TRAPPING_CORE) | target: TRAPPING_CORE | action: query_direct_illum_from_SOURCE_A',
-        'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(TRAPPING_CORE)➔R_INT(TRAPPING_CORE) | target: TRAPPING_CORE | action: schedule_reflection_shader',
-        'TYPE: CONTEXT | path: DETECTOR_DET_1➔T_IN(TRAPPING_CORE) | target: TRAPPING_CORE | action: query_direct_illum_from_SOURCE_A',
-        'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(TRAPPING_CORE) | target: TRAPPING_CORE | action: schedule_reflection_shader',
-        'TYPE: SHADERS | path: DETECTOR_DET_1 | target: TRAPPING_CORE | action: schedule_transmission_shader',
+            # Step 2: Interaction with GLASS
+            'TYPE: INTERSECT | path: DETECTOR_DET_1➔T_IN(GLASS) | target: GLASS | action: internal_wall_bounce',
+            'TYPE: SHADERS | path: DETECTOR_DET_1➔T_IN(GLASS) | target: GLASS | action: schedule_reflection_shader',
+            'TYPE: TERMINATION | path: DETECTOR_DET_1➔T_IN(GLASS) | target: GLASS | action: transmit_budget_exhausted',
 
-        # Step 3: Interaction with TRAPPING_CORE
-        'TYPE: INTERSECT | path: DETECTOR_DET_1 | target: TRAPPING_CORE | action: external_surface_bounce',
-        'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(TRAPPING_CORE) | target: SOURCE_A | action: query_emission_from_AIR',
-        'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(TRAPPING_CORE) | target: SCENE | action: schedule_emission_shader_from_AIR',
+            # Step 3: In through GLASS
+            'TYPE: INTERSECT | path: DETECTOR_DET_1 | target: GLASS | action: transmit_in_from_AIR',
+            'TYPE: SHADERS | path: DETECTOR_DET_1 | target: GLASS | action: schedule_transmission_shader',
+            'TYPE: ORIGIN | path: DETECTOR_DET_2 | target: DET_2 | action: init_trace',
+            'TYPE: TERMINATION | path: DETECTOR_DET_2➔R_EXT(GLASS) | target: GLASS | action: bounce_budget_exhausted',
+            'TYPE: CONTEXT | path: DETECTOR_DET_2➔R_EXT(GLASS)➔T_IN(GLASS) | target: SOURCE_B | action: query_emission_from_GLASS',
+            'TYPE: SHADERS | path: DETECTOR_DET_2➔R_EXT(GLASS)➔T_IN(GLASS) | target: SCENE | action: schedule_emission_shader_from_GLASS',
 
-        # Step 4: In through TRAPPING_CORE
-        'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(TRAPPING_CORE) | target: TRAPPING_CORE | action: transmit_in_from_AIR',
-        'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(TRAPPING_CORE)➔T_IN(TRAPPING_CORE) | target: SOURCE_A | action: query_emission_from_TRAPPING_CORE',
-        'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(TRAPPING_CORE)➔T_IN(TRAPPING_CORE) | target: SCENE | action: schedule_emission_shader_from_TRAPPING_CORE',
-        'TYPE: TERMINATION | path: DETECTOR_DET_1➔R_EXT(TRAPPING_CORE)➔T_IN(TRAPPING_CORE) | target: TRAPPING_CORE | action: transmit_budget_exhausted',
+            # Step 4: In through GLASS
+            'TYPE: INTERSECT | path: DETECTOR_DET_2➔R_EXT(GLASS) | target: GLASS | action: transmit_in_from_AIR',
+            'TYPE: SHADERS | path: DETECTOR_DET_2➔R_EXT(GLASS) | target: GLASS | action: schedule_transmission_shader',
 
-        # Step 5: Interaction with TRAPPING_CORE
-        'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(TRAPPING_CORE)➔T_IN(TRAPPING_CORE) | target: TRAPPING_CORE | action: internal_wall_bounce',
-        'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(TRAPPING_CORE)➔T_IN(TRAPPING_CORE)➔R_INT(TRAPPING_CORE) | target: SOURCE_A | action: query_emission_from_TRAPPING_CORE',
-        'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(TRAPPING_CORE)➔T_IN(TRAPPING_CORE)➔R_INT(TRAPPING_CORE) | target: SCENE | action: schedule_emission_shader_from_TRAPPING_CORE',
-        'TYPE: TERMINATION | path: DETECTOR_DET_1➔R_EXT(TRAPPING_CORE)➔T_IN(TRAPPING_CORE)➔R_INT(TRAPPING_CORE) | target: TRAPPING_CORE | action: transmit_budget_exhausted',
-        'TYPE: TERMINATION | path: DETECTOR_DET_1➔R_EXT(TRAPPING_CORE)➔T_IN(TRAPPING_CORE)➔R_INT(TRAPPING_CORE) | target: TRAPPING_CORE | action: bounce_budget_exhausted',
-        'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(TRAPPING_CORE)➔T_IN(TRAPPING_CORE) | target: TRAPPING_CORE | action: query_direct_illum_from_SOURCE_A',
-        'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(TRAPPING_CORE)➔T_IN(TRAPPING_CORE) | target: TRAPPING_CORE | action: schedule_reflection_shader',
-        'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(TRAPPING_CORE) | target: TRAPPING_CORE | action: schedule_transmission_shader',
+            # Step 5: Interaction with GLASS
+            'TYPE: INTERSECT | path: DETECTOR_DET_2 | target: GLASS | action: external_surface_bounce',
+            'TYPE: SHADERS | path: DETECTOR_DET_2 | target: GLASS | action: schedule_reflection_shader',
+            'TYPE: CONTEXT | path: DETECTOR_DET_2➔T_IN(GLASS)➔R_INT(GLASS) | target: SOURCE_B | action: query_emission_from_GLASS',
+            'TYPE: SHADERS | path: DETECTOR_DET_2➔T_IN(GLASS)➔R_INT(GLASS) | target: SCENE | action: schedule_emission_shader_from_GLASS',
 
-        # Step 6: Interaction with TRAPPING_CORE
-        'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(TRAPPING_CORE) | target: TRAPPING_CORE | action: external_surface_bounce',
-        'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(TRAPPING_CORE)➔R_EXT(TRAPPING_CORE) | target: SOURCE_A | action: query_emission_from_AIR',
-        'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(TRAPPING_CORE)➔R_EXT(TRAPPING_CORE) | target: SCENE | action: schedule_emission_shader_from_AIR',
+            # Step 6: Interaction with GLASS
+            'TYPE: INTERSECT | path: DETECTOR_DET_2➔T_IN(GLASS) | target: GLASS | action: internal_wall_bounce',
+            'TYPE: SHADERS | path: DETECTOR_DET_2➔T_IN(GLASS) | target: GLASS | action: schedule_reflection_shader',
+            'TYPE: TERMINATION | path: DETECTOR_DET_2➔T_IN(GLASS) | target: GLASS | action: transmit_budget_exhausted',
 
-        # Step 7: In through TRAPPING_CORE
-        'TYPE: INTERSECT | path: DETECTOR_DET_1➔R_EXT(TRAPPING_CORE)➔R_EXT(TRAPPING_CORE) | target: TRAPPING_CORE | action: transmit_in_from_AIR',
-        'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(TRAPPING_CORE)➔R_EXT(TRAPPING_CORE)➔T_IN(TRAPPING_CORE) | target: SOURCE_A | action: query_emission_from_TRAPPING_CORE',
-        'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(TRAPPING_CORE)➔R_EXT(TRAPPING_CORE)➔T_IN(TRAPPING_CORE) | target: SCENE | action: schedule_emission_shader_from_TRAPPING_CORE',
-        'TYPE: TERMINATION | path: DETECTOR_DET_1➔R_EXT(TRAPPING_CORE)➔R_EXT(TRAPPING_CORE)➔T_IN(TRAPPING_CORE) | target: TRAPPING_CORE | action: transmit_budget_exhausted',
-        'TYPE: TERMINATION | path: DETECTOR_DET_1➔R_EXT(TRAPPING_CORE)➔R_EXT(TRAPPING_CORE)➔T_IN(TRAPPING_CORE) | target: TRAPPING_CORE | action: bounce_budget_exhausted',
-        'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(TRAPPING_CORE)➔R_EXT(TRAPPING_CORE) | target: TRAPPING_CORE | action: schedule_transmission_shader',
-        'TYPE: TERMINATION | path: DETECTOR_DET_1➔R_EXT(TRAPPING_CORE)➔R_EXT(TRAPPING_CORE) | target: TRAPPING_CORE | action: bounce_budget_exhausted',
-        'TYPE: CONTEXT | path: DETECTOR_DET_1➔R_EXT(TRAPPING_CORE) | target: TRAPPING_CORE | action: query_direct_illum_from_SOURCE_A',
-        'TYPE: SHADERS | path: DETECTOR_DET_1➔R_EXT(TRAPPING_CORE) | target: TRAPPING_CORE | action: schedule_reflection_shader',
-        'TYPE: CONTEXT | path: DETECTOR_DET_1 | target: TRAPPING_CORE | action: query_direct_illum_from_SOURCE_A',
-        'TYPE: SHADERS | path: DETECTOR_DET_1 | target: TRAPPING_CORE | action: schedule_reflection_shader',
+            # Step 7: In through GLASS
+            'TYPE: INTERSECT | path: DETECTOR_DET_2 | target: GLASS | action: transmit_in_from_AIR',
+            'TYPE: SHADERS | path: DETECTOR_DET_2 | target: GLASS | action: schedule_transmission_shader',
+        ],
+        [
+            'TYPE: ORIGIN | path: DETECTOR_DET_1 | target: DET_1 | action: init_trace',
+            'TYPE: TERMINATION | path: DETECTOR_DET_1 | target: INFINITY | action: ray_escaped_at_step_0',
+            'TYPE: ORIGIN | path: DETECTOR_DET_2 | target: DET_2 | action: init_trace',
+            'TYPE: TERMINATION | path: DETECTOR_DET_2 | target: INFINITY | action: ray_escaped_at_step_0',
+        ],
     ]
 
     assert lane_history == expected_sequence

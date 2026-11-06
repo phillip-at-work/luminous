@@ -50,6 +50,7 @@ class TopologicalRayTracer:
         self.INFINITE = float('inf')
 
     def raytrace(self, batch_size: int, MOCK_distances_timeline: List[np.ndarray]) -> Vector:
+        self._validate_timeline_shape(batch_size, MOCK_distances_timeline)
         self.tracker = VectorizedStateTracker(batch_size)
         total_accumulated_rays = Vector(np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size))
         all_active = np.ones(batch_size, dtype=np.bool_)
@@ -96,9 +97,17 @@ class TopologicalRayTracer:
     ) -> Tuple[Vector, np.ndarray]:
         """
         Executes a vectorized, reverse-propagated path trace step.
-        Splits evaluation into an immediate Direct Emission query pass 
-        and a deferred secondary reflection/transmission scattering pass.
+        Splits evaluation into an end-node reachability / START<->END direct-view emission pass
+        (PART 1) and a deferred secondary reflection/transmission scattering pass (PART 2).
         Supports simultaneous splitting (reflection and transmission forks).
+
+        FRAMEWORK RULE: the emission model is scheduled IF AND ONLY IF the `starts` node and the
+        `ends` node are in direct view of one another - i.e. that unobstructed line of sight
+        exists at the START vertex (MOCK_step == 0). An `ends` node that is in direct view only
+        at the terminal point of a reflection and/or transmission chain proves path connectivity
+        (it terminates the ray and validates upstream deferred shader commits) and must never
+        trigger the emission model. `starts`/`ends` are direction-agnostic by design; shader
+        semantics are the developer's responsibility, and this rule is the consistency contract.
         """
         batch_size = active_mask.shape
         rays = Vector(np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size))
@@ -132,29 +141,53 @@ class TopologicalRayTracer:
             closest_element_dist = np.full(batch_size, self.INFINITE, dtype=np.float64)
 
         # =========================================================================
-        # PART 1: IMMEDIATE DIRECT ILLUMINATION / EMISSION CHECKS (WITH OCCLUSION)
+        # PART 1: END-NODE REACHABILITY + START<->END DIRECT-VIEW EMISSION (WITH OCCLUSION)
         # =========================================================================
-        # Evaluates if the current spatial vertex can see active light sources
+        # FRAMEWORK RULE - two distinct concepts are evaluated separately here:
+        #
+        #   end_reached   - the traced ray terminates on an `ends` node with no optical
+        #                   element interposed (occlusion-checked). This proves PATH
+        #                   CONNECTIVITY only: it terminates the ray at this vertex and, on
+        #                   unwinding, validates the deferred reflection/transmission shader
+        #                   commits upstream.
+        #
+        #   emission_call - the emission model is scheduled IF AND ONLY IF the `starts` node
+        #                   and the `ends` node are in direct view of ONE ANOTHER, i.e. that
+        #                   unobstructed line of sight exists at the START vertex itself.
+        #                   An `ends` node that is in direct view only at the terminal point
+        #                   of a reflection and/or transmission chain is NOT sufficient to
+        #                   trigger the emission model. `starts`/`ends` are deliberately
+        #                   direction-agnostic; it is the developer's shader that assigns the
+        #                   semantics, and this rule is the single consistency contract.
+        #
+        # MOCK_step == 0 is the structural marker of the START vertex: `raytrace` enters with
+        # MOCK_step=0 and every recursion passes MOCK_step+1, so MOCK_step > 0 means this
+        # vertex was created by a reflection/transmission extension.
         for idx, source_node in enumerate(self.ends):
             source_distance = step_distances[:, idx]
             
             # PHYSICAL OCCLUSION CRITERIA:
             # The light source is only in direct view if it is closer than any optical element!
-            in_direct_view = alive_mask & (source_distance < self.INFINITE) & (source_distance <= closest_element_dist)
+            end_reached = alive_mask & (source_distance < self.INFINITE) & (source_distance <= closest_element_dist)
             
-            if np.any(in_direct_view):
-                self.tracker.log_state(in_direct_view, "CONTEXT", path_id, source_node.node_id, f"query_emission_from_{medium_id}")
-                self.tracker.log_state(in_direct_view, "SHADERS", path_id, "SCENE", f"schedule_emission_shader_from_{medium_id}")
+            # START<->END DIRECT-VIEW RULE: emission is eligible only at the START vertex.
+            emission_call = end_reached & (MOCK_step == 0)
+            
+            if np.any(emission_call):
+                self.tracker.log_state(emission_call, "CONTEXT", path_id, source_node.node_id, f"query_emission_from_{medium_id}")
+                self.tracker.log_state(emission_call, "SHADERS", path_id, "SCENE", f"schedule_emission_shader_from_{medium_id}")
                 
                 # Directly accumulate verified incoming light into the ray state
                 mock_source_energy = Vector(np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size))
-                mock_source_energy.x[in_direct_view] = 5.0
-                mock_source_energy.y[in_direct_view] = 5.0
-                mock_source_energy.z[in_direct_view] = 5.0
-                rays += mock_source_energy.place(in_direct_view)
-                
-                # Mark this path track slice as historically validated
-                hit_source_downstream[in_direct_view] = True
+                mock_source_energy.x[emission_call] = 5.0
+                mock_source_energy.y[emission_call] = 5.0
+                mock_source_energy.z[emission_call] = 5.0
+                rays += mock_source_energy.place(emission_call)
+            
+            # Mark this path track slice as historically validated (path connectivity, not
+            # emission). This is what gates the deferred shader commits during the unwinding.
+            if np.any(end_reached):
+                hit_source_downstream[end_reached] = True
 
         # =========================================================================
         # PART 2: DEFERRED SECONDARY SCATTER PASS
@@ -264,3 +297,36 @@ class TopologicalRayTracer:
                         hit_source_downstream[valid_transmission_shader] = True
 
         return rays, hit_source_downstream
+
+    def _validate_timeline_shape(self, batch_size: int, MOCK_distances_timeline: List[np.ndarray]) -> None:
+        """
+        Enforces the mock-timeline contract at entry (called first from `raytrace`): every step
+        matrix is (batch_size ROWS = ray lanes) x (len(ends) + len(elements) COLUMNS =
+        [ends... | elements...], in constructor order).
+
+        This guard exists because the lane count is set by `batch_size` - it sizes the tracker and
+        every mask - NOT by the matrix. A matrix with FEWER rows than `batch_size` is silently
+        broadcast by NumPy across the lanes: deleting a lane's row then changes nothing observable,
+        and a test keeps passing against a history that still has `batch_size` lanes. A matrix with
+        MORE rows crashes later, far from the cause. Fail fast, at the source, naming the step.
+        """
+        expected_cols = len(self.ends) + len(self.elements)
+        for step, matrix in enumerate(MOCK_distances_timeline):
+            if matrix.ndim != 2:
+                raise ValueError(
+                    f"MOCK_distances_timeline[{step}]: expected a 2-D matrix "
+                    f"(rows = ray lanes, cols = [ends | elements]); got ndim={matrix.ndim}"
+                )
+            rows, cols = matrix.shape
+            if rows != batch_size:
+                raise ValueError(
+                    f"MOCK_distances_timeline[{step}]: {rows} row(s) but batch_size={batch_size}. "
+                    f"Rows are ray lanes - one row per lane, per step. A short matrix is silently "
+                    f"broadcast across lanes by NumPy; a long one indexes past the tracker."
+                )
+            if cols != expected_cols:
+                raise ValueError(
+                    f"MOCK_distances_timeline[{step}]: {cols} column(s) but "
+                    f"len(ends) + len(elements) = {expected_cols}. Columns are "
+                    f"[ends... | elements...] in constructor order."
+                )

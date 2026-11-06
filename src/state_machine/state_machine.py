@@ -25,14 +25,42 @@ class MockNode:
         self.refractive_index = refractive_index
 
 
+# The accumulated breadcrumb separator. Each recursion appends exactly ONE hop, so the LAST hop
+# of a path_id is the surface the ray departed from most recently. Hops are tagged with the
+# traversal that produced them: R_EXT / R_INT (external / internal reflection) and
+# T_IN / T_OUT (transmission into / out of a volume).
+PATH_SEPARATOR = "➔"
+
+
+def most_recent_origin(path_id: str) -> str:
+    """The node the ray originated from most recently, as a bare node id.
+
+    `path_id` accumulates one `➔TAG(node_id)` hop per recursion, e.g.
+    'DET_1➔R_EXT(MIRROR_1)➔R_EXT(MIRROR_2)'. The last hop is the most recent origin, so
+    this returns 'MIRROR_2'. At the START vertex no hop has been appended yet and the breadcrumb
+    is just the root's own node_id ('DET_1'), which is returned unchanged.
+
+    The traversal tag is deliberately dropped from the token: which traversal launched this leg is
+    already recorded by the PRECEDING entry's `action:` field, so keeping it here is duplication
+    that costs readability.
+    """
+    last_hop = path_id.split(PATH_SEPARATOR)[-1]
+    if last_hop.endswith(")") and "(" in last_hop:
+        return last_hop[last_hop.index("(") + 1:last_hop.rindex(")")]
+    return last_hop
+
+
 class VectorizedStateTracker:
     def __init__(self, batch_size: int):
         self.batch_size = batch_size
         self.history: List[List[str]] = [[] for _ in range(batch_size)]
 
-    def log_state(self, mask: np.ndarray, log_type: str, path: str, target: str, action: str):
-        """Option A implementation generating scannable structural state tokens."""
-        state_string = f"TYPE: {log_type} | path: {path} | target: {target} | action: {action}"
+    def log_state(self, mask: np.ndarray, log_type: str, path_id: str, target: str, action: str):
+        """Scannable state token answering the two questions that matter per iteration:
+        `from:` where the ray originated most recently, and `target:` which surface or object
+        the iteration occurred on. `TYPE:` separates an interaction from a shader application."""
+        origin = most_recent_origin(path_id)
+        state_string = f"TYPE: {log_type} | from: {origin} | target: {target} | action: {action}"
         idx = np.where(mask)[0]
         for i in idx:
             self.history[i].append(state_string)
@@ -59,7 +87,10 @@ class TopologicalRayTracer:
         initial_transmissions = np.zeros(batch_size, dtype=np.int32)
 
         for detector in self.starts:
-            path_root = f"DETECTOR_{detector.node_id}"
+            # The breadcrumb root is the USER-GRANTED node_id, with no role prefix: lane-history
+            # tokens quote names exactly as the developer issued them to MockNode. That makes
+            # node_id required to be unique across starts / elements / ends.
+            path_root = detector.node_id
             self.tracker.log_state(all_active, "ORIGIN", path_root, detector.node_id, "init_trace")
             
             dummy_origin = Vector(np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size))
@@ -175,7 +206,10 @@ class TopologicalRayTracer:
             
             if np.any(emission_call):
                 self.tracker.log_state(emission_call, "CONTEXT", path_id, source_node.node_id, f"query_emission_from_{medium_id}")
-                self.tracker.log_state(emission_call, "SHADERS", path_id, "SCENE", f"schedule_emission_shader_from_{medium_id}")
+                # Paired with the CONTEXT above on the SAME (from, target) leg. Every TYPE/action
+                # pair in the log shares its leg and differs only in the action, so the shader
+                # commit names the source it was scheduled for - not an abstract scene.
+                self.tracker.log_state(emission_call, "SHADERS", path_id, source_node.node_id, f"schedule_emission_shader_from_{medium_id}")
                 
                 # Directly accumulate verified incoming light into the ray state
                 mock_source_energy = Vector(np.zeros(batch_size), np.zeros(batch_size), np.zeros(batch_size))
@@ -226,12 +260,12 @@ class TopologicalRayTracer:
             if np.any(can_bounce):
                 if is_exiting_this_element:
                     # Internal reflection: ray stays INSIDE the current volume medium
-                    branch_path_id_reflect = f"{path_id}➔R_INT({element.node_id})"
+                    branch_path_id_reflect = f"{path_id}{PATH_SEPARATOR}R_INT({element.node_id})"
                     log_msg_reflect = "internal_wall_bounce"
                     next_medium_stack_reflect = medium_stack 
                 else:
                     # External reflection: ray bounces off outside, remains in parent medium context
-                    branch_path_id_reflect = f"{path_id}➔R_EXT({element.node_id})"
+                    branch_path_id_reflect = f"{path_id}{PATH_SEPARATOR}R_EXT({element.node_id})"
                     log_msg_reflect = "external_surface_bounce"
                     next_medium_stack_reflect = medium_stack
 
@@ -269,12 +303,12 @@ class TopologicalRayTracer:
                         # Exiting volume: pop current element off the medium stack
                         next_medium_stack_transmit = medium_stack[:-1]
                         dest_id = next_medium_stack_transmit[-1].node_id if next_medium_stack_transmit else "AIR"
-                        branch_path_id_transmit = f"{path_id}➔T_OUT({element.node_id})"
+                        branch_path_id_transmit = f"{path_id}{PATH_SEPARATOR}T_OUT({element.node_id})"
                         log_msg_transmit = f"transmit_out_to_{dest_id}"
                     else:
                         # Entering volume: push new element onto the medium stack
                         next_medium_stack_transmit = medium_stack + (element,)
-                        branch_path_id_transmit = f"{path_id}➔T_IN({element.node_id})"
+                        branch_path_id_transmit = f"{path_id}{PATH_SEPARATOR}T_IN({element.node_id})"
                         log_msg_transmit = f"transmit_in_from_{medium_id}"
 
                     next_transmissions = transmission_depths.copy()

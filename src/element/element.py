@@ -2,21 +2,25 @@ from abc import ABC, abstractmethod
 import numpy as np
 
 from ..math.vector import Vector
+from ..utilities.identity import SceneObject
 from .shape import Sphere
 
 
-class Element(ABC):
+class Element(SceneObject, ABC):
 
     '''An object in the scene that does not emit light'''
 
-    def __init__(self, center: Vector, color: Vector, transparent: bool = False, refractive_index: float = 1.0, user_params: dict = None):
+    def __init__(self, node_id: str, center: Vector, color: Vector, transparent: bool = False, refractive_index: float = 1.0, user_params: dict = None):
         '''
         Parameters:
+            node_id (str): This element's identity in trace records. Required, issued
+                once, immutable afterwards - see `SceneObject`.
             center (Vector): Element's center position in 3D space
             color (Vector): Element's color
             refractive_index (float): Refractive index of the element
             user_params (dict): Additional user-defined parameters
         '''
+        super().__init__(node_id)
         self.center = center
         self.color = color
         self.transparent = transparent
@@ -37,16 +41,16 @@ class Element(ABC):
         pass
     
 class SphereElement(Element, Sphere):
-    def __init__(self, center: Vector, radius: float, color: Vector, transparent: bool = False, refractive_index: float = 1.0, user_params=None):
-        super().__init__(center, color, transparent, refractive_index, user_params)
+    def __init__(self, node_id: str, center: Vector, radius: float, color: Vector, transparent: bool = False, refractive_index: float = 1.0, user_params=None):
+        super().__init__(node_id, center, color, transparent, refractive_index, user_params)
         self.radius = radius
 
     def surface_color(self, M: Vector) -> Vector:
         return self.color
 
 class CheckeredSphereElement(SphereElement):
-    def __init__(self, center: Vector, radius: float, color: Vector, transparent: bool = False, refractive_index: float = 1.0, checker_color: Vector = Vector(1, 1, 1), user_params=None):
-        super().__init__(center, radius, color, transparent, refractive_index, user_params)
+    def __init__(self, node_id: str, center: Vector, radius: float, color: Vector, transparent: bool = False, refractive_index: float = 1.0, checker_color: Vector = Vector(1, 1, 1), user_params=None):
+        super().__init__(node_id, center, radius, color, transparent, refractive_index, user_params)
         self.checker_color = checker_color
 
     def surface_color(self, M: Vector) -> Vector:

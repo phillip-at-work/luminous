@@ -2,13 +2,19 @@ from abc import ABC, abstractmethod
 import numpy as np
 
 from ..math.vector import Vector
+from ..utilities.identity import SceneObject
 from .shape import Circle, Sphere
 
-class Source(ABC):
+class Source(SceneObject, ABC):
 
     '''An object in the scene which does emit light'''
     
-    def __init__(self):
+    def __init__(self, node_id: str):
+        '''
+        Parameters:
+            node_id (str): This source's identity in logger trace records
+        '''
+        super().__init__(node_id)
 
         # these represent rays which terminate at a source during a reverse ray trace
         # enqueued as though they were leaving the source. not used as of 2/11/26.
@@ -37,18 +43,20 @@ class Source(ABC):
             self.ray_emission_origin[detector]._merge(origin)
 
 class IsotropicSource(Source, Sphere):
-    def __init__(self, center: Vector, radius: float, color: Vector):
+    def __init__(self, node_id: str, center: Vector, radius: float, color: Vector):
+
+        Source.__init__(self, node_id)
         Sphere.__init__(self, center, radius)
-        Source.__init__(self)
         self.color = color
 
     def _compute_initial_ray_directions(self, pixels: Vector):
         pass
 
 class Laser(Source, Circle):
-    def __init__(self, center: Vector, radius: float, pointing_direction: Vector, color: Vector, pixel_count: int):
+    def __init__(self, node_id: str, center: Vector, radius: float, pointing_direction: Vector, color: Vector, pixel_count: int):
+
+        Source.__init__(self, node_id)
         Circle.__init__(self, center, radius, pointing_direction, pixel_count)
-        Source.__init__(self)
         self.color = color
 
     def _compute_initial_ray_directions(self, pixels: Vector):

@@ -5,18 +5,21 @@ from numpy.typing import NDArray
 from PIL import Image
 
 from ..math.vector import Vector
+from ..utilities.identity import SceneObject
 from .source import Source
 from .shape import Shape, Square, Circle
 
 import logging
-from ..utilities.logconfig import setup_logging
+
 logger = logging.getLogger(__name__)
 
 
-class Detector(ABC):
-    def __init__(self):
+class Detector(SceneObject, ABC):
+    def __init__(self, node_id: str):
         '''
         Parameters:
+            node_id (str): This detector's identity in trace records. Required, issued
+                once, immutable afterwards - see `SceneObject`.
             _data (Vector): Detector's accumulated data, called directly from within `Scene`
             position (Vector): Detector's absolute position in 3D space
             width (float): Detector width in pixels
@@ -25,6 +28,7 @@ class Detector(ABC):
             screen_width (float, optional): The physical width (X-direction) of the detector screen in scene units. Default is 2.0.
             screen_height (float, optional): The physical height (Y-direction) of the detector screen. If None, calculated from screen_width and detector aspect ratio.
         '''
+        super().__init__(node_id)
 
         # instance attributes directly assigned from Scene
         self._reverse_trace_data = None
@@ -100,9 +104,10 @@ class PowerMeter(Detector, Circle):
     '''
     Ideal power meter for measurements in watts
     '''
-    def __init__(self, center: Vector, radius: float, pointing_direction: Vector, pixel_count: int = None):
+    def __init__(self, node_id: str, center: Vector, radius: float, pointing_direction: Vector, pixel_count: int = None):
+        
+        Detector.__init__(self, node_id)
         Circle.__init__(self, center, radius, pointing_direction, pixel_count)
-        Detector.__init__(self)
 
     def _reflection_model(self, element, intersection_point, surface_normal_at_intersection, direction_to_origin_unit, intersection_map, intersection_mask):
         # TODO apply reflection model directly to self.pixels
@@ -128,9 +133,10 @@ class Camera(Detector, Square):
     NOTE    elements must include `user_params={'specular': s, 'n_s': n}`
             where s is a float and n is a float
     '''
-    def __init__(self, width: int, height: int, position: Vector, pointing_direction: Vector, screen_width: float, screen_height: float):
+    def __init__(self, node_id: str, width: int, height: int, position: Vector, pointing_direction: Vector, screen_width: float, screen_height: float):
+        
+        Detector.__init__(self, node_id)
         Square.__init__(self, width, height, position, pointing_direction, screen_width, screen_height)
-        Detector.__init__(self)
 
         # unilluminated pixels display this noise floor
         self.ambient_dark = Vector(0, 0, 0)

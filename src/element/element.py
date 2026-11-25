@@ -2,25 +2,24 @@ from abc import ABC, abstractmethod
 import numpy as np
 
 from ..math.vector import Vector
-from ..utilities.identity import SceneObject
+from ..utilities.logconfig import validate_node_id
 from .shape import Sphere
 
 
-class Element(SceneObject, ABC):
+class Element(ABC):
 
     '''An object in the scene that does not emit light'''
 
     def __init__(self, node_id: str, center: Vector, color: Vector, transparent: bool = False, refractive_index: float = 1.0, user_params: dict = None):
         '''
         Parameters:
-            node_id (str): This element's identity in trace records. Required, issued
-                once, immutable afterwards - see `SceneObject`.
+            node_id (str): This element's identity in trace records
             center (Vector): Element's center position in 3D space
             color (Vector): Element's color
             refractive_index (float): Refractive index of the element
             user_params (dict): Additional user-defined parameters
         '''
-        super().__init__(node_id)
+        self.node_id = validate_node_id(node_id)
         self.center = center
         self.color = color
         self.transparent = transparent

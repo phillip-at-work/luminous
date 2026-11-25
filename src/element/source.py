@@ -2,10 +2,10 @@ from abc import ABC, abstractmethod
 import numpy as np
 
 from ..math.vector import Vector
-from ..utilities.identity import SceneObject
+from ..utilities.logconfig import validate_node_id
 from .shape import Circle, Sphere
 
-class Source(SceneObject, ABC):
+class Source(ABC):
 
     '''An object in the scene which does emit light'''
     
@@ -14,7 +14,7 @@ class Source(SceneObject, ABC):
         Parameters:
             node_id (str): This source's identity in logger trace records
         '''
-        super().__init__(node_id)
+        self.node_id = validate_node_id(node_id)
 
         # these represent rays which terminate at a source during a reverse ray trace
         # enqueued as though they were leaving the source. not used as of 2/11/26.

@@ -5,7 +5,7 @@ from numpy.typing import NDArray
 from PIL import Image
 
 from ..math.vector import Vector
-from ..utilities.identity import SceneObject
+from ..utilities.logconfig import validate_node_id
 from .source import Source
 from .element import Element
 from .shape import Square, Circle
@@ -15,12 +15,11 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class Detector(SceneObject, ABC):
+class Detector(ABC):
     def __init__(self, node_id: str):
         '''
         Parameters:
-            node_id (str): This detector's identity in trace records. Required, issued
-                once, immutable afterwards - see `SceneObject`.
+            node_id (str): This detector's identity in trace records
             _data (Vector): Detector's accumulated data, called directly from within `Scene`
             position (Vector): Detector's absolute position in 3D space
             width (float): Detector width in pixels
@@ -29,7 +28,7 @@ class Detector(SceneObject, ABC):
             screen_width (float, optional): The physical width (X-direction) of the detector screen in scene units. Default is 2.0.
             screen_height (float, optional): The physical height (Y-direction) of the detector screen. If None, calculated from screen_width and detector aspect ratio.
         '''
-        super().__init__(node_id)
+        self.node_id = validate_node_id(node_id)
 
         # instance attributes directly assigned from Scene
         self._reverse_trace_data = None

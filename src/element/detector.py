@@ -7,7 +7,8 @@ from PIL import Image
 from ..math.vector import Vector
 from ..utilities.identity import SceneObject
 from .source import Source
-from .shape import Shape, Square, Circle
+from .element import Element
+from .shape import Square, Circle
 
 import logging
 
@@ -37,7 +38,7 @@ class Detector(SceneObject, ABC):
 
     @abstractmethod
     def _reflection_model(  self, 
-                            element: Shape,
+                            element: Element,
                             intersection_point: Vector,
                             surface_normal_at_intersection: Vector, 
                             direction_to_origin_unit: Vector, 
@@ -61,7 +62,7 @@ class Detector(SceneObject, ABC):
 
     @abstractmethod
     def _transmission_model(self, 
-                            element: Shape,
+                            element: Element,
                             initial_intersection: Vector,
                             final_intersection: Vector,
                             intersection_mask: NDArray[np.bool_]) -> Vector | None:

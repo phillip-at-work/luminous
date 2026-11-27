@@ -360,7 +360,7 @@ class Scene:
         from_label = most_recent_origin(path)
         trace(logger, LEG, from_label, recursion_enum, "reverse_leg", hop=self.counter, b=bounce, d=transmission_depth, path=path)
 
-        rays = Vector(0, 0, 0)
+        rays = Vector(np.zeros(direction.x.shape), np.zeros(direction.y.shape), np.zeros(direction.z.shape))
 
         #
         # source illumination
@@ -398,9 +398,14 @@ class Scene:
             # r = (origin_point_illuminated - intersection_to_source).norm()
             # source._enqueue_rays(origin=intersection_to_source, direction=r, detector=detector)
 
-        ray_data = detector._emission_model(detector.pointing_direction, self.intersection_map)
-        trace(logger, SHADERS, from_label, detector.node_id, "emission_model", hop=self.counter, b=bounce, d=transmission_depth, src=len(self.intersection_map))
-        rays += ray_data.place(intersection_point_illuminated)
+        #
+        # emission
+        #
+
+        if recursion_enum == 'START' and self.intersection_map:
+            ray_data = detector._emission_model(detector.pointing_direction, self.intersection_map)
+            trace(logger, SHADERS, from_label, detector.node_id, "emission_model", hop=self.counter, b=bounce, d=transmission_depth, src=len(self.intersection_map))
+            rays += ray_data.place(intersection_point_illuminated)
 
         self.intersection_map.clear()
 
@@ -513,7 +518,26 @@ class Scene:
                     trace(logger, INTERSECT, from_label, element.node_id, traversal, hop=self.counter, b=bounce, d=transmission_depth, mask=hit)
                     reflected_ray = self._reflected_ray(incident_ray, surface_normal_at_intersection)
                     reflected_ray_data = self._reverse_recursive_path_trace(detector, intersection_point_with_standoff, reflected_ray, bounce + 1, transmission_depth, recursion_enum=e, source=source, path=extend_path(path, traversal, element.node_id))
-                    
+
+                    arriving_radiance: Vector = reflected_ray_data
+                    propagates: NDArray[np.bool_] = (arriving_radiance.x != 0) | (arriving_radiance.y != 0) | (arriving_radiance.z != 0)
+
+                    if np.any(propagates):
+
+                        #
+                        # reflection
+                        #
+                        shaded_radiance = detector._reflection_model(element,
+                                                                intersection_point,
+                                                                surface_normal_at_intersection,
+                                                                incident_ray * -1,
+                                                                [{'source': element,
+                                                                  'direction_to_source_unit': reflected_ray,
+                                                                  'intersection_point_illuminated': propagates}],
+                                                                hit)
+                        trace(logger, SHADERS, from_label, element.node_id, "reflection_model", hop=self.counter, b=bounce, d=transmission_depth, mask=hit, src=1)
+                        rays += (shaded_radiance * arriving_radiance).place(hit)
+
                     # Second, check for direct illumination from sources at this surface
                     for source in self.sources:
 
@@ -535,19 +559,21 @@ class Scene:
 
                         self.intersection_map.append({'source': source, 'direction_to_source_unit': direction_to_source_unit, 'intersection_point_illuminated': intersection_point_illuminated})
 
-                    # Apply reflection model for direct illumination (if any sources visible)
-                    direct_illum_data = detector._reflection_model(element,
-                                                            intersection_point,
-                                                            surface_normal_at_intersection,
-                                                            direction_to_origin_unit,
-                                                            self.intersection_map,
-                                                            hit)
-                    trace(logger, SHADERS, from_label, element.node_id, "reflection_model", hop=self.counter, b=bounce, d=transmission_depth, mask=hit, src=len(self.intersection_map))
-                    
-                    # Combine both reflected ray contribution and direct illumination
-                    rays += reflected_ray_data.place(hit)
-                    rays += direct_illum_data.place(hit)
-                                
+                    if self.intersection_map:
+
+                        #
+                        # reflection
+                        #
+
+                        direct_illum_data = detector._reflection_model(element,
+                                                                intersection_point,
+                                                                surface_normal_at_intersection,
+                                                                direction_to_origin_unit,
+                                                                self.intersection_map,
+                                                                hit)
+                        trace(logger, SHADERS, from_label, element.node_id, "reflection_model", hop=self.counter, b=bounce, d=transmission_depth, mask=hit, src=len(self.intersection_map))
+                        rays += direct_illum_data.place(hit)
+
                     self.intersection_map.clear()
 
                     # NOTE not sure if the existing `transmission from volume` is sufficient to allow rays to transmit and reflect for enum `SUBSURF-REFLECT`
